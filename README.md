@@ -39,6 +39,15 @@ imbalances, micro-price) est **un peu prévisible linéairement** (R²_OOS 0.02�
 le MLP overfit partout. Action-conditioning (impact) = Phase 1b, validation en ABIDES
 (Stage 2).
 
+## Phase 1b — action-conditioning (impact) — ✅
+
+**Résultat → 📄 [`reports/PHASE1B.md`](reports/PHASE1B.md)** : world model rendu
+*action-conditionné* (`état suivant = passif ⊕ impact de ton ordre`). L'exécution est
+**mesurée** sur le vrai carnet (un ordre mange les niveaux → slippage + saut de mid) ; la
+décroissance post-trade est **modélisée** (validation → ABIDES). Le plus petit ordre coûte
+déjà **~1.7–3 bp** vs un edge prédictible **≤ 0.1 bp** (Phase 0) → **mirage confirmé côté
+exécution**. Démo « et si j'achète ? » incluse.
+
 ## Setup (Windows, venv dédié — jamais le Python global)
 ```powershell
 py -3.11 -m venv .venv
@@ -84,12 +93,15 @@ src/mirage/
   state.py          vecteur d'état compact (Phase 1)
   wm.py             world model d'état + rollout autorégressif (Phase 1)
   wm_eval.py        éval Phase 1a (1-step par dim + rollout)
+  impact.py         overlay d'impact mécaniste — action-conditioning (Phase 1b)
 scripts/bootstrap_signif.py  significativité (block bootstrap) + analyse coûts
 scripts/tick_regime.py       régime large-tick vs small-tick par ticker
 scripts/run_gru.py           run unique du GRU (torch)
+scripts/impact_curves.py     courbes de coût + démo action-conditionnée (Phase 1b)
 notebooks/00_phase0_mvp.ipynb  notebook récapitulatif (exécuté)
 reports/PHASE0.md            write-up Phase 0 + figures
 reports/PHASE1.md            write-up Phase 1a + figure rollout
+reports/PHASE1B.md           write-up Phase 1b (impact + action demo)
 tests/test_no_lookahead.py   tests anti-lookahead
 configs/phase0.yaml          protocole FIGÉ (Phase 0)
 configs/phase1.yaml          protocole FIGÉ (Phase 1a)
