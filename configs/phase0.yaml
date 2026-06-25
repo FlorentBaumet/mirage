@@ -1,0 +1,62 @@
+# =============================================================================
+# Phase 0 — PROTOCOLE D'ÉVALUATION FIGÉ (I3)
+# À ne PAS modifier en cours d'éval. Toute modif = nouvelle expérience datée.
+# =============================================================================
+
+data:
+  date: "2012-06-21"
+  raw_dir: data/raw
+  levels: 10               # on n'utilise que les 10 meilleurs niveaux (même pour les fichiers L50)
+  session_start_s: 34200   # 09:30:00 (garde-fou)
+  session_end_s:   57600   # 16:00:00 (garde-fou ; les fichiers L50 s'arrêtent à 10:30)
+  instruments:             # sample gratuit LOBSTER 2012-06-21
+    - {ticker: AMZN, start_ms: 34200000, end_ms: 57600000, file_level: 10}  # journée entière
+    - {ticker: GOOG, start_ms: 34200000, end_ms: 57600000, file_level: 10}  # journée entière
+    - {ticker: INTC, start_ms: 34200000, end_ms: 57600000, file_level: 10}  # journée entière
+    - {ticker: MSFT, start_ms: 34200000, end_ms: 57600000, file_level: 10}  # journée entière
+    - {ticker: AAPL, start_ms: 34200000, end_ms: 37800000, file_level: 50}  # 09:30-10:30 seulement (seul L50 1h)
+
+bars:
+  freq: "1s"               # barres clock-time 1 seconde
+  price: mid               # cible = mid-price (micro-price = variante future)
+
+target:
+  kind: log_return
+  horizon: 1               # horizon par défaut (éval simple : t -> t+1 barre)
+  horizons: [1, 5, 10, 30, 60]   # GRID PRÉ-ENREGISTRÉ pour le sweep (barres = secondes)
+                                  # figé AVANT de regarder les résultats ; on reporte TOUT.
+
+features:
+  levels: 10
+  lags: [1, 2, 3, 5, 10]   # returns passés (causaux)
+  ofi: true                # order-flow imbalance (best level)
+  lookback: 10             # fenêtre max d'une feature -> borne l'embargo
+
+split:                     # ---- LA colonne vertébrale ----
+  scheme: expanding        # walk-forward expansif (train sur tout le passé)
+  n_folds: 5
+  min_train_frac: 0.4      # premier train = 40% de la session
+  embargo: 10              # purge >= features.lookback (anti-fuite aux frontières)
+  standardize: true        # scaler fit sur TRAIN seulement, appliqué au test
+
+model:
+  name: mlp                # 'mlp' (sklearn, défaut) | 'gru' (torch) | 'ridge'
+  hidden: [64, 32]
+  max_iter: 500
+  alpha: 0.001             # L2 ; la cible est normalisée dans MLPModel (anti-divergence)
+  seed: 0
+
+baselines: [zero, persistence, linear]   # à battre OUT-OF-SAMPLE
+
+metric:
+  primary: r2_oos          # PRÉ-ENREGISTRÉE avant tout entraînement
+  report: [rmse, mae, directional_accuracy]
+
+go_no_go:
+  rule: >
+    GO si le modèle bat 'zero' ET 'linear' (R2_OOS > 0) en moyenne ET sur la
+    MAJORITÉ des tickers (cohérence cross-sectional). Sinon NO-GO = résultat valide.
+
+wandb:
+  enabled: false
+  project: mirage-phase0
