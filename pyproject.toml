@@ -17,7 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 torch = ["torch>=2.1"]       # uniquement pour le world model GRU (Phase 0 marche sans)
-dev = ["pytest>=7.4", "wandb>=0.16"]
+dev = ["pytest>=7.4", "wandb>=0.16", "nbconvert>=7.0", "ipykernel>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

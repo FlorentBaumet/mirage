@@ -9,6 +9,9 @@
 > **n'apparaît pas dans l'erreur quadratique** et se situe **sous l'échelle du
 > spread**. C'est le cas d'école d'un *edge statistique qui est un mirage net de
 > coûts* — la thèse du projet, démontrée dès la Phase 0.
+> **Confirmé par block bootstrap** : le signe est *significatif* (IC 95 % excluant 0.5
+> sur INTC/MSFT/AMZN) mais le rendement *net de coûts est négatif sur les 5 tickers* —
+> significatif ≠ rentable.
 
 ---
 
@@ -112,6 +115,47 @@ microstructure **bien documenté** : sur les *large-tick stocks*, le mid bouge p
 l'imbalance du carnet prédit fortement le prochain micro-mouvement. Les small-tick
 (AMZN/GOOG/AAPL, prix élevés, spread large) sont **au niveau du hasard**.
 
+### 4.4 Significativité (block bootstrap) + coûts — significatif mais non rentable
+
+Block bootstrap **circulaire** (blocs de 60 s, 2000 réplicats — respecte
+l'autocorrélation des cibles chevauchantes) sur les prédictions OOS du modèle linéaire
+@1 s, plus une analyse de coûts (stratégie « trade le signe », ~1 spread payé par
+retournement). `scripts/bootstrap_signif.py`.
+
+| Ticker | dir_acc | IC 95 % | R²_OOS | IC 95 % | edge brut (bp/barre) | ½-spread (bp) | **net (bp/barre)** |
+|---|---|---|---|---|---|---|---|
+| INTC | 0.822 | [0.791, 0.855] | +0.027 | [0.017, 0.035] | 0.078 | 1.88 | **−0.39** |
+| MSFT | 0.795 | [0.767, 0.824] | +0.029 | [0.020, 0.038] | 0.095 | 1.66 | **−0.34** |
+| AMZN | 0.574 | [0.556, 0.591] | +0.004 | [0.001, 0.007] | 0.046 | 2.61 | **−0.90** |
+| AAPL | 0.506 | [0.480, 0.531] | −0.018 | [−0.029, −0.007] | −0.009 | 1.49 | **−0.92** |
+| GOOG | 0.474 | [0.456, 0.492] | −0.015 | [−0.021, −0.011] | 0.002 | 2.04 | **−0.97** |
+
+- **Statistiquement** : le signe est **significativement > hasard** sur INTC, MSFT et
+  (faiblement) AMZN — leur IC 95 % de dir_acc **exclut 0.5** (p < 1e-3). GOOG est *sous*
+  le hasard, AAPL est au hasard (IC contient 0.5). Le signal large-tick est donc **réel**,
+  pas un bruit de fold.
+- **Économiquement** : l'edge directionnel brut (≤ 0.1 bp/barre) est **20–50× plus petit
+  que le demi-spread** (1.5–2.6 bp). **Le rendement net est négatif sur les 5 tickers.**
+
+→ **« Significatif » n'est pas « rentable ».** Un signe juste à 82 % qui perd de l'argent
+net de coûts : le mirage, prouvé par **deux méthodes indépendantes** (IC bootstrap +
+coûts). *(Le modèle de coûts est un proxy conservateur ; l'écart de 20–50× est bien trop
+grand pour qu'une exécution plus fine l'inverse.)*
+
+### 4.5 Contrôle non-linéaire : le GRU ne renverse pas le verdict
+
+Un petit **GRU** (torch, séquences glissantes de 16 barres) tourne sur les mêmes données
+(`scripts/run_gru.py`). Il fait *marginalement mieux* que le linéaire **sur les large-tick**
+(INTC R²_OOS **+0.030** vs +0.018, dir_acc 0.854 ; MSFT +0.029 vs +0.024) — la dynamique de
+file d'attente large-tick a une part non-linéaire réelle. **Mais :**
+
+- il ne bat les baselines que sur **2/5 tickers** (les large-tick) → aucune cohérence
+  cross-sectional → **NO-GO** par la règle pré-enregistrée ;
+- c'est exactement le **même signal sous l'échelle du spread** que le §4.4 a montré
+  **non rentable**.
+
+→ Un modèle plus expressif *fitte un peu mieux le mirage* ; il ne le transforme pas en edge.
+
 ## 5. Interprétation — l'edge qui est un mirage
 
 L'écart entre les deux métriques **est** le résultat :
@@ -129,8 +173,9 @@ contredite par la bonne métrique économique (R² + coûts).*
 
 ## 6. Verdict Go/No-Go
 
-**NO-GO** pour « un world model non-linéaire simple bat les baselines en R²_OOS ».
-Robuste sur 5 tickers × 5 horizons. **C'est un résultat valide**, pas un échec :
+**NO-GO** pour « un world model simple bat les baselines en R²_OOS ».
+Robuste sur 5 tickers × 5 horizons, et au passage **MLP → GRU** (§4.5).
+**C'est un résultat valide**, pas un échec :
 
 > Ce qui est prédictible : le **signe** du mid à très court terme sur les **large-tick**.
 > Ce qui ne l'est pas : la **magnitude** du rendement, à toute échelle testée — et le
@@ -139,12 +184,12 @@ Robuste sur 5 tickers × 5 horizons. **C'est un résultat valide**, pas un éche
 ## 7. Limites (à ne pas cacher)
 
 - **1 journée, 2012, 5 tickers** → out-of-sample intraday uniquement.
-- **Cibles à horizon `h` chevauchantes** ⟹ autocorrélation : le R²_OOS reste un
-  estimateur valide, mais la **significativité** d'un +0.002 exigerait un *block
-  bootstrap* (non fait ici — voir suite).
+- **Cibles à horizon `h` chevauchantes** ⟹ autocorrélation : traitée par le **block
+  bootstrap circulaire** du §4.4 (blocs de 60 s) pour les IC de significativité.
 - **AAPL** ne couvre qu'1 h (échantillon plus court).
-- **Coûts non intégrés** dans cette Phase 0 (prédiction pure) — mais l'argument du
-  §5 montre déjà *qualitativement* qu'ils tueraient le signal directionnel.
+- **Modèle de coûts simplifié** (§4.4) : proxy conservateur « 1 spread par retournement ».
+  L'écart edge/coût (20–50×) est trop grand pour qu'une exécution plus fine inverse le
+  verdict, mais un backtest d'exécution réaliste reste un raffinement possible.
 
 ## 8. Reproductibilité
 
@@ -155,13 +200,13 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pytest -q            # tests anti-fuite
 .\.venv\Scripts\python.exe -m mirage.eval   --config configs\phase0.yaml   # éval @1 horizon
 .\.venv\Scripts\python.exe -m mirage.sweep  --config configs\phase0.yaml   # horizon sweep + figures
-.\.venv\Scripts\python.exe scripts\tick_regime.py  # régime tick par ticker
+.\.venv\Scripts\python.exe scripts\tick_regime.py        # régime tick par ticker
+.\.venv\Scripts\python.exe scripts\bootstrap_signif.py   # significativité + coûts (§4.4)
 ```
 
 ## 9. Suites possibles
 
-1. **Valider le signe @1 s** (block bootstrap vs coûts/spread) pour trancher
-   définitivement « réel vs bruit de fold » sur INTC/MSFT.
+1. ✅ **Valider le signe @1 s** — *fait* (§4.4) : significatif mais non rentable.
 2. **Phase 1** : vrai world model d'**état** (prédire l'évolution multi-features du
    carnet, pas un scalaire) + **action-conditioning** (impact de nos ordres).
 3. **Stage 2** (bonus) : agent basé-modèle + test d'edge **net de coûts** → la

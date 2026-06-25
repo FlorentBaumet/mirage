@@ -48,6 +48,16 @@ py -3.11 -m venv .venv
 
 # 3) éval walk-forward + Go/No-Go
 .\.venv\Scripts\python.exe -m mirage.eval --config configs\phase0.yaml
+
+# 4) horizon sweep (figures), régime tick, significativité+coûts, GRU (torch)
+.\.venv\Scripts\python.exe -m mirage.sweep --config configs\phase0.yaml
+.\.venv\Scripts\python.exe scripts\tick_regime.py
+.\.venv\Scripts\python.exe scripts\bootstrap_signif.py
+.\.venv\Scripts\python.exe scripts\run_gru.py        # nécessite l'extra [torch]
+
+# 5) le notebook récapitulatif (déjà exécuté dans le repo)
+.\.venv\Scripts\python.exe -m jupyter nbconvert --to notebook --execute --inplace `
+    --ExecutePreprocessor.kernel_name=mirage notebooks\00_phase0_mvp.ipynb
 ```
 
 ## Structure
@@ -61,6 +71,12 @@ src/mirage/
   models/seq.py     MLP (défaut) + GRU (optionnel)
   metrics.py        R²_OOS, RMSE, hit-rate
   eval.py           boucle walk-forward + agrégation + Go/No-Go
+  sweep.py          horizon sweep pré-enregistré + figures
+scripts/bootstrap_signif.py  significativité (block bootstrap) + analyse coûts
+scripts/tick_regime.py       régime large-tick vs small-tick par ticker
+scripts/run_gru.py           run unique du GRU (torch)
+notebooks/00_phase0_mvp.ipynb  notebook récapitulatif (exécuté)
+reports/PHASE0.md            write-up complet + figures
 tests/test_no_lookahead.py   tests anti-lookahead
 configs/phase0.yaml          protocole FIGÉ
 ```
