@@ -1,0 +1,49 @@
+# =============================================================================
+# Phase 1a — WORLD MODEL D'ÉTAT (passif) — PROTOCOLE FIGÉ (I3)
+# État compact multi-features, prédit + déroulé en rollout. Pas encore d'impact
+# (action-conditioning = Phase 1b). Mêmes données / mêmes splits que Phase 0.
+# =============================================================================
+
+data:
+  date: "2012-06-21"
+  raw_dir: data/raw
+  levels: 10
+  session_start_s: 34200
+  session_end_s:   57600
+  instruments:
+    - {ticker: AMZN, start_ms: 34200000, end_ms: 57600000, file_level: 10}
+    - {ticker: GOOG, start_ms: 34200000, end_ms: 57600000, file_level: 10}
+    - {ticker: INTC, start_ms: 34200000, end_ms: 57600000, file_level: 10}
+    - {ticker: MSFT, start_ms: 34200000, end_ms: 57600000, file_level: 10}
+    - {ticker: AAPL, start_ms: 34200000, end_ms: 37800000, file_level: 50}
+
+bars:
+  freq: "1s"
+
+state:
+  cols: [ret, spread_rel, imb1, depth_imb, micro_dev]   # vecteur d'état compact
+  lookback: 16          # fenêtre d'entrée (états passés)
+
+split:
+  scheme: expanding
+  n_folds: 5
+  min_train_frac: 0.4
+  embargo: 10           # effectif = max(embargo, lookback) dans le code (anti-fuite)
+  # standardisation : gérée DANS les modèles (scaler X + cible, fit train-only)
+
+model:
+  name: mlp             # 'mlp' (défaut) | 'linear'
+  hidden: [64, 32]
+  max_iter: 300
+  alpha: 0.001
+  seed: 0
+
+baselines: [persistence, mean, linear]
+
+rollout:
+  horizons: [1, 2, 3, 5, 10, 20, 30]   # en barres (= secondes)
+  max_starts: 2000                     # sous-échantillonnage des points de départ
+
+metric:
+  primary: r2_oos_vs_persistence       # 1-step, par dimension d'état
+  rollout: r2_oos_cumret_vs_randomwalk # courbe rollout (rendement cumulé)

@@ -89,3 +89,21 @@ def test_shuffle_destroys_or_not_signal():
     m = Ridge().fit(X[:200], y[:200])
     pred = m.predict(X[200:])
     assert r2_oos(y[200:], pred) <= 0.05, "signal fantôme : fuite probable"
+
+
+def test_state_supervised_alignment():
+    """World model (Phase 1) : la fenêtre d'entrée est strictement causale et la
+    cible est l'état suivant."""
+    from mirage.state import STATE_COLS, build_state
+    from mirage.wm import make_supervised
+
+    bars, _ = _toy_bars(40)
+    S, _ = build_state(bars, levels=1)
+    lookback = 4
+    X, Y, pos, d = make_supervised(S.values, lookback)
+    assert d == len(STATE_COLS)
+    k = 5
+    assert np.allclose(Y[k], S.values[pos[k]]), "cible != état suivant"
+    win = X[k].reshape(lookback, d)
+    assert np.allclose(win, S.values[pos[k] - lookback:pos[k]]), "fenêtre mal alignée"
+    assert np.allclose(win[-1], S.values[pos[k] - 1]), "fenêtre contient le futur (fuite)"

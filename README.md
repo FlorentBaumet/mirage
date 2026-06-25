@@ -30,6 +30,15 @@ Décisions kickoff figées :
 - Action-conditioning : **Phase 1** (la Phase 0 prédit le marché « passif »).
 - Protocole d'éval **figé** dans [`configs/phase0.yaml`](configs/phase0.yaml) **avant** tout entraînement.
 
+## Phase 1a — world model d'état (passif) — ✅
+
+**Résultat → 📄 [`reports/PHASE1.md`](reports/PHASE1.md)** : on prédit un **vecteur
+d'état** (5 dims) déroulable. **Le prix reste un random walk** (le world model ne le bat
+à aucun horizon 1–30 s ; le MLP fait pire en rollout). La **forme du carnet** (spread,
+imbalances, micro-price) est **un peu prévisible linéairement** (R²_OOS 0.02–0.09), mais
+le MLP overfit partout. Action-conditioning (impact) = Phase 1b, validation en ABIDES
+(Stage 2).
+
 ## Setup (Windows, venv dédié — jamais le Python global)
 ```powershell
 py -3.11 -m venv .venv
@@ -72,11 +81,16 @@ src/mirage/
   metrics.py        R²_OOS, RMSE, hit-rate
   eval.py           boucle walk-forward + agrégation + Go/No-Go
   sweep.py          horizon sweep pré-enregistré + figures
+  state.py          vecteur d'état compact (Phase 1)
+  wm.py             world model d'état + rollout autorégressif (Phase 1)
+  wm_eval.py        éval Phase 1a (1-step par dim + rollout)
 scripts/bootstrap_signif.py  significativité (block bootstrap) + analyse coûts
 scripts/tick_regime.py       régime large-tick vs small-tick par ticker
 scripts/run_gru.py           run unique du GRU (torch)
 notebooks/00_phase0_mvp.ipynb  notebook récapitulatif (exécuté)
-reports/PHASE0.md            write-up complet + figures
+reports/PHASE0.md            write-up Phase 0 + figures
+reports/PHASE1.md            write-up Phase 1a + figure rollout
 tests/test_no_lookahead.py   tests anti-lookahead
-configs/phase0.yaml          protocole FIGÉ
+configs/phase0.yaml          protocole FIGÉ (Phase 0)
+configs/phase1.yaml          protocole FIGÉ (Phase 1a)
 ```
