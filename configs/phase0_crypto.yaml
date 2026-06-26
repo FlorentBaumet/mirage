@@ -1,0 +1,42 @@
+# =============================================================================
+# Phase 0 — CRYPTO (Binance klines) — robustesse multi-périodes / multi-symboles
+# Même question que Phase 0 LOBSTER, mais sur des MOIS de données (walk-forward
+# inter-périodes réel) au lieu d'une seule journée. Protocole FIGÉ.
+# =============================================================================
+
+data:
+  source: binance
+  interval: "1m"
+  raw_dir: data/raw/crypto
+  symbols: [BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT]
+
+target:
+  kind: log_return
+  horizon: 1                # next-bar (1 minute)
+
+features:
+  lags: [1, 2, 3, 5, 10]
+  vol_window: 30            # fenêtre des features glissantes (vol, volume...)
+
+split:
+  scheme: expanding
+  n_folds: 6                # ~2 mois par fold sur une année
+  min_train_frac: 0.4
+  embargo: 30               # >= vol_window (anti-fuite aux frontières)
+  standardize: true
+
+model:
+  name: mlp
+  hidden: [64, 32]
+  max_iter: 300
+  alpha: 0.001
+  seed: 0
+
+baselines: [zero, persistence, linear]
+
+metric:
+  primary: r2_oos
+  report: [dir_acc, gross_bp]
+
+costs:
+  taker_fee_bp: 5.0         # hypothèse de frais taker pour le check économique

@@ -91,6 +91,26 @@ def test_shuffle_destroys_or_not_signal():
     assert r2_oos(y[200:], pred) <= 0.05, "signal fantôme : fuite probable"
 
 
+def test_crypto_features_causal():
+    """Features crypto (klines) : cible = rendement futur ; ret_lag_1 = r_t."""
+    from mirage.crypto_features import build_features
+
+    idx = pd.date_range("2024-01-01", periods=80, freq="1min")
+    rng = np.random.default_rng(0)
+    close = 100 * np.exp(np.cumsum(rng.normal(0, 0.001, 80)))
+    bars = pd.DataFrame({
+        "high": close * 1.001, "low": close * 0.999, "close": close,
+        "volume": rng.uniform(1, 10, 80), "trades": rng.integers(1, 100, 80),
+        "taker_buy_base": rng.uniform(0, 5, 80),
+    }, index=idx)
+    X, y, persist = build_features(bars, lags=(1, 2), vol_window=5, horizon=1)
+    r = np.log(bars["close"]).diff()
+    exp_target, exp_lag1 = r.shift(-1), r
+    for ts in X.index:
+        assert np.isclose(y.loc[ts], exp_target.loc[ts]), "cible != rendement futur"
+        assert np.isclose(X.loc[ts, "ret_lag_1"], exp_lag1.loc[ts]), "ret_lag_1 != r_t"
+
+
 def test_state_supervised_alignment():
     """World model (Phase 1) : la fenêtre d'entrée est strictement causale et la
     cible est l'état suivant."""
