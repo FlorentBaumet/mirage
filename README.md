@@ -57,6 +57,16 @@ rendement est un **random walk** (R²_OOS ≤ 0 sur 4 coins × 6 périodes, dir_
 edge ~80× sous les frais). Le signal sous-seconde vu sur LOBSTER a disparu à 1 min.
 *(L'angle carnet crypto via Bybit L2 reste à faire.)*
 
+## Phase 1 (crypto, carnet Bybit L2) — ⭐ le test edge-vs-mirage
+
+**Résultat → 📄 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md)** — *le résultat
+phare*. Sur le carnet crypto (BTC/ETH, 1 s), le world model trouve une **vraie
+prédictibilité** du prix (**R²_OOS +0.086**, micro-price/imbalance). Une stratégie naïve
+fait **+66 % (BTC) en un jour… sans frais**. **Mais** elle tourne ~tous les 4 s : **dès 2 bp
+de frais → −444 %**, à frais taker Bybit (5,5 bp) → **−1338 %**. → **MIRAGE** : un signal
+*réel* détruit par les coûts. L'écart gross→net **est** la mesure du mirage — toute la thèse
+du projet dans deux nombres.
+
 ## Setup (Windows, venv dédié — jamais le Python global)
 ```powershell
 py -3.11 -m venv .venv
@@ -103,19 +113,24 @@ src/mirage/
   wm.py             world model d'état + rollout autorégressif (Phase 1)
   wm_eval.py        éval Phase 1a (1-step par dim + rollout)
   impact.py         overlay d'impact mécaniste — action-conditioning (Phase 1b)
-  data/crypto.py    chargeur klines Binance (crypto)
+  data/crypto.py    chargeur klines Binance (crypto OHLCV)
   crypto_features.py features OHLCV causales (crypto)
   crypto_eval.py    éval Phase 0 crypto (walk-forward inter-périodes)
+  data/bybit_lob.py chargeur carnet Bybit L2 (snapshot+deltas -> barres 1s)
 scripts/bootstrap_signif.py  significativité (block bootstrap) + analyse coûts
 scripts/tick_regime.py       régime large-tick vs small-tick par ticker
 scripts/run_gru.py           run unique du GRU (torch)
 scripts/impact_curves.py     courbes de coût + démo action-conditionnée (Phase 1b)
-scripts/download_binance.py  téléchargement klines Binance Vision (crypto)
+scripts/download_binance.py  téléchargement klines Binance Vision (crypto OHLCV)
+scripts/download_bybit_lob.py  téléchargement carnet L2 Bybit
+scripts/build_bybit_bars.py  reconstruction carnet -> barres 1s (.pkl)
+scripts/crypto_lob.py        microstructure crypto : Phase 1a + 1b + verdict éco
 notebooks/00_phase0_mvp.ipynb  notebook récapitulatif (exécuté)
 reports/PHASE0.md            write-up Phase 0 + figures
 reports/PHASE0_CRYPTO.md     write-up Phase 0 crypto (robustesse multi-périodes)
 reports/PHASE1.md            write-up Phase 1a + figure rollout
 reports/PHASE1B.md           write-up Phase 1b (impact + action demo)
+reports/PHASE1_CRYPTO.md     ⭐ write-up crypto LOB (edge-vs-mirage)
 tests/test_no_lookahead.py   tests anti-lookahead (LOBSTER + crypto + état)
 configs/phase0.yaml          protocole FIGÉ (Phase 0 LOBSTER)
 configs/phase0_crypto.yaml   protocole FIGÉ (Phase 0 crypto)
