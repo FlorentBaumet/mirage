@@ -60,12 +60,13 @@ edge ~80× sous les frais). Le signal sous-seconde vu sur LOBSTER a disparu à 1
 ## Phase 1 (crypto, carnet Bybit L2) — ⭐ le test edge-vs-mirage
 
 **Résultat → 📄 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md)** — *le résultat
-phare*. Sur le carnet crypto (BTC/ETH, 1 s), le world model trouve une **vraie
-prédictibilité** du prix (**R²_OOS +0.086**, micro-price/imbalance). Une stratégie naïve
-fait **+66 % (BTC) en un jour… sans frais**. **Mais** elle tourne ~tous les 4 s : **dès 2 bp
-de frais → −444 %**, à frais taker Bybit (5,5 bp) → **−1338 %**. → **MIRAGE** : un signal
-*réel* détruit par les coûts. L'écart gross→net **est** la mesure du mirage — toute la thèse
-du projet dans deux nombres.
+phare*. Sur le carnet crypto (**3 symboles × 6 jours**, 1,55 M barres 1 s), le world model
+trouve une **vraie prédictibilité** du prix : **R²_OOS ≈ +0.067**, **positive sur 5 folds
+walk-forward inter-jours sur 5 et sur 3 symboles sur 3** (micro-price/imbalance). **Mais ce
+n'est pas un edge** : la stratégie tourne ~tous les 5 s et **perd lourdement dès 2 bp de
+frais** sur les 3 symboles. Et **SOL est déjà mort à ZÉRO frais** — son spread (~0.6 bp,
+60× BTC) mange à lui seul tout le gain brut. → **MIRAGE**, démontré deux fois : par les
+frais, **et par le spread seul**.
 
 ## Setup (Windows, venv dédié — jamais le Python global)
 ```powershell
@@ -117,6 +118,7 @@ src/mirage/
   crypto_features.py features OHLCV causales (crypto)
   crypto_eval.py    éval Phase 0 crypto (walk-forward inter-périodes)
   data/bybit_lob.py chargeur carnet Bybit L2 (snapshot+deltas -> barres 1s)
+  backtest.py       regles de frontiere de journee (multi-jours), testees
 scripts/bootstrap_signif.py  significativité (block bootstrap) + analyse coûts
 scripts/tick_regime.py       régime large-tick vs small-tick par ticker
 scripts/run_gru.py           run unique du GRU (torch)
@@ -124,6 +126,7 @@ scripts/impact_curves.py     courbes de coût + démo action-conditionnée (Phas
 scripts/download_binance.py  téléchargement klines Binance Vision (crypto OHLCV)
 scripts/download_bybit_lob.py  téléchargement carnet L2 Bybit
 scripts/build_bybit_bars.py  reconstruction carnet -> barres 1s (.pkl)
+scripts/fetch_bybit_batch.py batch multi-jours : DL -> reconstruit -> supprime le zip
 scripts/crypto_lob.py        microstructure crypto : Phase 1a + 1b + verdict éco
 notebooks/00_phase0_mvp.ipynb  notebook récapitulatif (exécuté)
 reports/PHASE0.md            write-up Phase 0 + figures
