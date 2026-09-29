@@ -1,9 +1,15 @@
+# Environnement
 .venv/
 __pycache__/
 *.pyc
 *.egg-info/
+
+# Outils
 .pytest_cache/
+.ruff_cache/
 .ipynb_checkpoints/
+
+# Données (jamais commitées — voir data/README.md)
 data/raw/
 experiments/
 wandb/
