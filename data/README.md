@@ -1,15 +1,26 @@
 # Données — LOBSTER (Phase 0)
 
-> ⚠️ `data/raw/` est **gitignored** (on ne commit jamais les données).
+`data/raw/` est **gitignored** : on ne commit jamais les données.
 
 ## Récupérer le sample gratuit (réel)
 1. Aller sur https://lobsterdata.com/info/DataSamples.php
-2. Télécharger le sample **AAPL** (ou AMZN/GOOG/INTC/MSFT), date **2012-06-21**, niveau **10**.
-3. Dézipper dans `data/raw/`. Tu dois obtenir deux CSV (sans en-tête) :
-   - `AAPL_2012-06-21_34200000_57600000_message_10.csv`
-   - `AAPL_2012-06-21_34200000_57600000_orderbook_10.csv`
+2. Télécharger, pour la date **2012-06-21**, ce qu'attend `configs/phase0.yaml` :
+   - **AMZN, GOOG, INTC, MSFT** — journée complète, niveau **10** ;
+   - **AAPL** — niveau **50**, sur **09:30–10:30 seulement** (c'est le seul extrait
+     L50 d'une heure du sample gratuit).
+3. Dézipper dans `data/raw/` (fichiers à plat). Les noms attendus sont
+   `{ticker}_{date}_{start_ms}_{end_ms}_message_{niveaux}.csv` (idem `_orderbook_`),
+   soit dix fichiers :
+   - `AMZN_2012-06-21_34200000_57600000_message_10.csv` / `..._orderbook_10.csv`
+   - `GOOG_2012-06-21_34200000_57600000_message_10.csv` / `..._orderbook_10.csv`
+   - `INTC_2012-06-21_34200000_57600000_message_10.csv` / `..._orderbook_10.csv`
+   - `MSFT_2012-06-21_34200000_57600000_message_10.csv` / `..._orderbook_10.csv`
+   - `AAPL_2012-06-21_34200000_37800000_message_50.csv` / `..._orderbook_50.csv`
 
-Les chemins attendus sont dans [`../configs/phase0.yaml`](../configs/phase0.yaml) (`data.message_file` / `data.orderbook_file`).
+Ces chemins sont reconstruits par `mirage.eval` depuis `data.raw_dir`, `data.date` et la
+liste `data.instruments` (`ticker`, `start_ms`, `end_ms`, `file_level`) de
+[`../configs/phase0.yaml`](../configs/phase0.yaml) : ne rien renommer, le config doit
+tourner tel quel.
 
 ## Format LOBSTER (rappel)
 **message** (6 colonnes) : `time, event_type, order_id, size, price, direction`
@@ -24,12 +35,22 @@ Chaque ligne = état du carnet **immédiatement après** l'event correspondant d
 (les deux fichiers sont alignés 1:1, ligne à ligne).
 
 ## Pas de données sous la main ?
-Génère un échantillon **synthétique** au même format (pour tester le pipeline / les tests
-anti-fuite, **pas** pour conclure quoi que ce soit) :
+Génère un échantillon **synthétique** aux mêmes noms, sessions et profondeurs que le
+config (les cinq instruments ci-dessus), depuis la racine du dépôt :
 ```powershell
-..\.venv\Scripts\python.exe ..\scripts\make_synthetic_lobster.py
+.\.venv\Scripts\python.exe scripts\lobster\make_synthetic_lobster.py
+.\.venv\Scripts\python.exe -m mirage.eval --config configs\phase0.yaml --raw-dir data\raw\synthetic
 ```
+Le script écrit dans `data/raw/synthetic/` ; l'option `--raw-dir` de `mirage.eval`
+pointe dessus sans dupliquer le protocole. C'est un **banc d'essai du code**, pas une
+mesure de marché : les résultats obtenus sur ces données aléatoires n'ont **aucune
+signification**. L'évaluateur y rend d'ailleurs NO-GO, ce qui est le comportement attendu.
+
+## Autres jeux de données
+- Klines Binance (OHLCV) : `scripts/crypto/download_binance.py`.
+- Carnets Bybit L2 : `scripts/crypto/fetch_bybit_batch.py`, caches `.pkl` dans `data/raw/crypto_lob/`.
 
 ## Limite honnête (I3)
-Le sample = **1 seule journée, 1 ticker, 2012**. Donc out-of-sample limité au *intraday*
-(walk-forward sur fenêtres de la journée). Aucune prétention à généraliser : c'est un MVP.
+Le sample LOBSTER gratuit = **une seule journée (2012-06-21), 5 tickers**. Donc
+out-of-sample limité à l'**intraday** (walk-forward sur fenêtres de la journée). Aucune
+prétention à généraliser : c'est un MVP.

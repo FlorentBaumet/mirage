@@ -1,141 +1,147 @@
-# 🌐 MIRAGE — world model de marché + éval honnête
+# MIRAGE — world model de marché et évaluation honnête
 
-Pièce de portfolio. **Spec complète** : [`PROJET_MARKET_WORLD_MODEL.md`](PROJET_MARKET_WORLD_MODEL.md).
-Le cœur du projet = un **world model de marché** action-conditionné **évalué honnêtement**
-(anti-lookahead, walk-forward, out-of-sample). L'agent/edge est un bonus (Stage 2).
+Un **world model de marché** (carnet d'ordres et prix) évalué par une procédure
+**anti-lookahead et pré-enregistrée**, entièrement out-of-sample. Pas d'agent, pas de
+trade réel : la question posée est de savoir si l'on peut *mesurer* un edge — et le
+projet existe pour montrer comment on le **réfute**.
 
-## Invariants (jamais violés)
-- **I1** World model d'abord ; agent/edge en bonus.
-- **I2** Zéro argent réel, zéro trade réel (sim / historique uniquement).
-- **I3** L'évaluation honnête est la colonne vertébrale.
-- **I4** Petit modèle, données basse dimension, low-compute.
+Le résultat porteur : sur le carnet crypto réel, le world model trouve un signal de prix
+**authentique et robuste** (R²_OOS ≈ +0.067, positif sur 3 symboles × 5 folds
+inter-jours). Une stratégie naïve dessus perd de l'argent **dès 2 bp de frais**, et sur SOL
+elle est déjà morte **à zéro frais**. Le signal est réel ; l'edge est un mirage.
 
-## État : Phase 0 (MVP) — ✅ terminée
+![Un edge réel qui est un mirage net de frais](reports/figures/crypto_lob_mirage.png)
 
-**Question** : un world model **simple** (séquence MLP/GRU) prédit-il le **rendement
-next-step** (barres 1 s, cible = mid-price log-return) **mieux** que des baselines
-naïves (zero-forecast / persistence / linéaire), **en out-of-sample honnête** ?
+## Le résultat central — Phase 1 (carnet Bybit L2)
 
-**Résultat → 📄 [`reports/PHASE0.md`](reports/PHASE0.md)** : **NO-GO** assumé (aucun
-modèle ne bat le zero-forecast en R²_OOS, à aucun horizon de 1 à 60 s). Mais une
-prédictibilité **directionnelle** réelle existe à 1 s, **concentrée sur les actions
-large-tick** (INTC/MSFT ~80 %), **sous l'échelle du spread** → un *edge statistique
-qui est un mirage net de coûts*. La thèse du projet, démontrée dès la Phase 0.
+3 symboles × 6 jours, 1,55 M barres 1 s. Position = signe de la prédiction linéaire
+out-of-sample ; coût à chaque changement de position = demi-spread **réellement mesuré** +
+frais taker.
 
-Décisions kickoff figées :
-- Données : **LOBSTER** (samples gratuits 2012-06-21 : AMZN/GOOG/INTC/MSFT jour
-  complet + AAPL 1 h) → puis **ABIDES** (Stage 2).
-- Cible : **mid-price log-return**, horizon 1 barre, barres **1 s**.
-- Modèle : **séquence simple** (MLP par défaut ; GRU optionnel via extra `torch`).
-- Action-conditioning : **Phase 1** (la Phase 0 prédit le marché « passif »).
-- Protocole d'éval **figé** dans [`configs/phase0.yaml`](configs/phase0.yaml) **avant** tout entraînement.
+| Symbole | brut/barre | turnover | net à 0 bp | net à 2 bp | net à 5,5 bp |
+|---|---|---|---|---|---|
+| BTCUSDT | +0.107 bp | 0.216 | **+0.105 bp** | **−0.760 bp** | −2.275 bp |
+| ETHUSDT | +0.213 bp | 0.349 | **+0.200 bp** | **−1.196 bp** | −3.640 bp |
+| SOLUSDT | +0.228 bp | 0.352 | **−0.0004 bp** | −1.409 bp | −3.874 bp |
 
-## Phase 1a — world model d'état (passif) — ✅
+SOL a le **meilleur** signal brut des trois, et pourtant son net est **nul sans le moindre
+frais** : son demi-spread (~0.3 bp) × son turnover (0.35) consomme exactement le gain. Le
+mirage ne repose donc sur aucune hypothèse de frais — il est structurel. Détail :
+[`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md).
 
-**Résultat → 📄 [`reports/PHASE1.md`](reports/PHASE1.md)** : on prédit un **vecteur
-d'état** (5 dims) déroulable. **Le prix reste un random walk** (le world model ne le bat
-à aucun horizon 1–30 s ; le MLP fait pire en rollout). La **forme du carnet** (spread,
-imbalances, micro-price) est **un peu prévisible linéairement** (R²_OOS 0.02–0.09), mais
-le MLP overfit partout. Action-conditioning (impact) = Phase 1b, validation en ABIDES
-(Stage 2).
+## La thèse, démontrée sur cinq jeux de données
 
-## Phase 1b — action-conditioning (impact) — ✅
+| Phase | Données | Question | Verdict |
+|---|---|---|---|
+| [**0**](reports/PHASE0.md) — LOBSTER | 5 actions, 1 journée 2012, barres 1 s | Le rendement du mid est-il prédictible ? | **NO-GO** : R²_OOS ≤ 0 de 1 à 60 s. Le *signe* est prédictible sur les large-tick (82–83 % à 1 s) mais pour un gain 20–50× plus petit que le demi-spread. |
+| [**0 (crypto)**](reports/PHASE0_CRYPTO.md) | 4 cryptos, 1 an de klines 1 min | La question tient-elle sur des mois ? | Random walk (R²_OOS ≤ 0 sur 4 coins × 6 périodes, dir ≈ 50 %). Le signal sous-seconde a disparu à 1 min. |
+| [**1a**](reports/PHASE1.md) | LOBSTER | Prédire le *vecteur d'état* du carnet plutôt qu'un scalaire | Le prix reste un random walk ; la forme du carnet (spread, imbalances, micro-price) est légèrement prévisible linéairement (R²_OOS 0.02–0.09). |
+| [**1b**](reports/PHASE1B.md) | LOBSTER | Action-conditionner le world model (impact de ses propres ordres) | Le plus petit ordre coûte déjà **1.7–3 bp** contre un edge prédictible **≤ 0.1 bp**. Mirage confirmé côté exécution. |
+| [**1 (crypto LOB)**](reports/PHASE1_CRYPTO.md) | 3 symboles × 6 jours, carnet Bybit L2, 1,55 M barres 1 s | Sait-on distinguer un vrai edge d'un mirage quand le signal existe ? | **Le cas d'école** : signal réel et robuste (R²_OOS ≈ +0.067), backtest brut flatteur, net de coûts négatif partout. |
 
-**Résultat → 📄 [`reports/PHASE1B.md`](reports/PHASE1B.md)** : world model rendu
-*action-conditionné* (`état suivant = passif ⊕ impact de ton ordre`). L'exécution est
-**mesurée** sur le vrai carnet (un ordre mange les niveaux → slippage + saut de mid) ; la
-décroissance post-trade est **modélisée** (validation → ABIDES). Le plus petit ordre coûte
-déjà **~1.7–3 bp** vs un edge prédictible **≤ 0.1 bp** (Phase 0) → **mirage confirmé côté
-exécution**. Démo « et si j'achète ? » incluse.
+## Méthodologie — ce qui rend l'évaluation crédible
 
-## Phase 0 (crypto) — robustesse multi-périodes — ✅
+- **Walk-forward purgé** : train sur le passé, test sur le futur, jamais l'inverse.
+  Embargo ≥ horizon et ≥ lookback, pour qu'une cible regardant `h` barres en avant ne
+  puisse pas empiéter sur le train.
+- **Scaler ajusté sur le train seul**, puis appliqué au test — aucune statistique du futur.
+- **Baselines obligatoires** à chaque étape (`zero`/random walk, `persistence`, `linear`) :
+  un modèle qui ne les bat pas n'apporte rien, et on le dit.
+- **Métrique primaire pré-enregistrée** (R²_OOS = 1 − SSE(modèle)/SSE(baseline)) et grille
+  d'horizons figée dans les `configs/*.yaml` **avant** tout entraînement. Tout est reporté,
+  aucun cherry-pick.
+- **Tests anti-fuite automatisés** ([`tests/test_no_lookahead.py`](tests/test_no_lookahead.py)) :
+  alignement cible = futur, embargo respecté, scaler train-only, absence de signal fantôme
+  sur données aléatoires.
+- **Significativité et coûts** : block bootstrap circulaire pour les intervalles de
+  confiance, et un verdict économique chiffré à côté du verdict statistique.
 
-**Résultat → 📄 [`reports/PHASE0_CRYPTO.md`](reports/PHASE0_CRYPTO.md)** : la question de
-Phase 0 rejouée sur **un an de klines 1 min × 4 cryptos** (Binance, gratuit) — donc
-walk-forward **inter-périodes** réel, plus une seule journée. Verdict robuste : à 1 min, le
-rendement est un **random walk** (R²_OOS ≤ 0 sur 4 coins × 6 périodes, dir_acc ≈ 50 %,
-edge ~80× sous les frais). Le signal sous-seconde vu sur LOBSTER a disparu à 1 min.
-*(L'angle carnet crypto via Bybit L2 reste à faire.)*
+« Significatif » n'est pas « rentable ». L'écart entre les deux est le sujet du projet.
 
-## Phase 1 (crypto, carnet Bybit L2) — ⭐ le test edge-vs-mirage
+## Installation
 
-**Résultat → 📄 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md)** — *le résultat
-phare*. Sur le carnet crypto (**3 symboles × 6 jours**, 1,55 M barres 1 s), le world model
-trouve une **vraie prédictibilité** du prix : **R²_OOS ≈ +0.067**, **positive sur 5 folds
-walk-forward inter-jours sur 5 et sur 3 symboles sur 3** (micro-price/imbalance). **Mais ce
-n'est pas un edge** : la stratégie tourne ~tous les 5 s et **perd lourdement dès 2 bp de
-frais** sur les 3 symboles. Et **SOL est déjà mort à ZÉRO frais** — son spread (~0.6 bp,
-60× BTC) mange à lui seul tout le gain brut. → **MIRAGE**, démontré deux fois : par les
-frais, **et par le spread seul**.
-
-## Setup (Windows, venv dédié — jamais le Python global)
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 # (optionnel, pour le GRU)  .\.venv\Scripts\python.exe -m pip install -e ".[torch]"
 ```
 
-## Lancer la Phase 0
+## Reproduire
+
+**Sans télécharger la moindre donnée** — le pipeline complet tourne sur un échantillon
+synthétique, et l'évaluateur y rend NO-GO (comportement attendu sur des données sans
+signal) :
+
 ```powershell
-# 1) données : déposer le sample LOBSTER dans data/raw/  (voir data/README.md)
-#    OU générer un échantillon synthétique pour tester le pipeline :
-.\.venv\Scripts\python.exe scripts\make_synthetic_lobster.py
+.\.venv\Scripts\python.exe -m pytest -q                                  # tests anti-fuite
+.\.venv\Scripts\python.exe scripts\lobster\make_synthetic_lobster.py     # échantillon bidon
+.\.venv\Scripts\python.exe -m mirage.eval --config configs\phase0.yaml --raw-dir data\raw\synthetic
+```
 
-# 2) tests anti-fuite (la colonne vertébrale)
-.\.venv\Scripts\python.exe -m pytest -q
+**Sur les vraies données** (voir [`data/README.md`](data/README.md)) :
 
-# 3) éval walk-forward + Go/No-Go
+```powershell
+# Phase 0 (LOBSTER) — éval + horizon sweep + régime tick + significativité + GRU
 .\.venv\Scripts\python.exe -m mirage.eval --config configs\phase0.yaml
-
-# 4) horizon sweep (figures), régime tick, significativité+coûts, GRU (torch)
 .\.venv\Scripts\python.exe -m mirage.sweep --config configs\phase0.yaml
-.\.venv\Scripts\python.exe scripts\tick_regime.py
-.\.venv\Scripts\python.exe scripts\bootstrap_signif.py
-.\.venv\Scripts\python.exe scripts\run_gru.py        # nécessite l'extra [torch]
+.\.venv\Scripts\python.exe scripts\lobster\tick_regime.py
+.\.venv\Scripts\python.exe scripts\lobster\bootstrap_signif.py
+.\.venv\Scripts\python.exe scripts\lobster\run_gru.py              # extra [torch]
 
-# 5) le notebook récapitulatif (déjà exécuté dans le repo)
-.\.venv\Scripts\python.exe -m jupyter nbconvert --to notebook --execute --inplace `
-    --ExecutePreprocessor.kernel_name=mirage notebooks\00_phase0_mvp.ipynb
+# Phase 1a (world model d'état) et 1b (impact / action-conditioning)
+.\.venv\Scripts\python.exe -m mirage.wm_eval --config configs\phase1.yaml
+.\.venv\Scripts\python.exe scripts\lobster\impact_curves.py
+
+# Phase 0 crypto (klines Binance, 1 an)
+.\.venv\Scripts\python.exe scripts\crypto\download_binance.py --symbols BTCUSDT ETHUSDT SOLUSDT BNBUSDT --start 2024-01 --end 2024-12
+.\.venv\Scripts\python.exe -m mirage.crypto_eval --config configs\phase0_crypto.yaml
+
+# Phase 1 crypto (carnet Bybit L2 ~300 Mo/jour-symbole, puis analyse)
+.\.venv\Scripts\python.exe scripts\crypto\fetch_bybit_batch.py --symbols BTCUSDT ETHUSDT SOLUSDT `
+    --dates 2025-05-08 2025-05-22 2025-06-02 2025-06-18 2025-07-09 2025-08-06
+.\.venv\Scripts\python.exe scripts\crypto\crypto_lob.py
 ```
 
 ## Structure
+
 ```
 src/mirage/
-  data/lobster.py   parse message + orderbook LOBSTER
-  data/bars.py      event -> barres clock-time, mid-price
-  features.py       features CAUSALES (imbalance, OFI, returns laggés)
-  splits.py         walk-forward purgé + embargo   <- cœur I3
-  baselines.py      zero-forecast / linéaire
-  models/seq.py     MLP (défaut) + GRU (optionnel)
-  metrics.py        R²_OOS, RMSE, hit-rate
-  eval.py           boucle walk-forward + agrégation + Go/No-Go
-  sweep.py          horizon sweep pré-enregistré + figures
-  state.py          vecteur d'état compact (Phase 1)
-  wm.py             world model d'état + rollout autorégressif (Phase 1)
-  wm_eval.py        éval Phase 1a (1-step par dim + rollout)
-  impact.py         overlay d'impact mécaniste — action-conditioning (Phase 1b)
-  data/crypto.py    chargeur klines Binance (crypto OHLCV)
-  crypto_features.py features OHLCV causales (crypto)
-  crypto_eval.py    éval Phase 0 crypto (walk-forward inter-périodes)
-  data/bybit_lob.py chargeur carnet Bybit L2 (snapshot+deltas -> barres 1s)
-  backtest.py       regles de frontiere de journee (multi-jours), testees
-scripts/bootstrap_signif.py  significativité (block bootstrap) + analyse coûts
-scripts/tick_regime.py       régime large-tick vs small-tick par ticker
-scripts/run_gru.py           run unique du GRU (torch)
-scripts/impact_curves.py     courbes de coût + démo action-conditionnée (Phase 1b)
-scripts/download_binance.py  téléchargement klines Binance Vision (crypto OHLCV)
-scripts/download_bybit_lob.py  téléchargement carnet L2 Bybit
-scripts/build_bybit_bars.py  reconstruction carnet -> barres 1s (.pkl)
-scripts/fetch_bybit_batch.py batch multi-jours : DL -> reconstruit -> supprime le zip
-scripts/crypto_lob.py        microstructure crypto : Phase 1a + 1b + verdict éco
-notebooks/00_phase0_mvp.ipynb  notebook récapitulatif (exécuté)
-reports/PHASE0.md            write-up Phase 0 + figures
-reports/PHASE0_CRYPTO.md     write-up Phase 0 crypto (robustesse multi-périodes)
-reports/PHASE1.md            write-up Phase 1a + figure rollout
-reports/PHASE1B.md           write-up Phase 1b (impact + action demo)
-reports/PHASE1_CRYPTO.md     ⭐ write-up crypto LOB (edge-vs-mirage)
-tests/test_no_lookahead.py   tests anti-lookahead (LOBSTER + crypto + état)
-configs/phase0.yaml          protocole FIGÉ (Phase 0 LOBSTER)
-configs/phase0_crypto.yaml   protocole FIGÉ (Phase 0 crypto)
-configs/phase1.yaml          protocole FIGÉ (Phase 1a)
+  data/lobster.py       parsing des fichiers LOBSTER (message + orderbook)
+  data/bars.py          agrégation en barres clock-time (le dernier état de la seconde)
+  data/crypto.py        chargeur klines Binance
+  data/bybit_lob.py     reconstructeur carnet Bybit L2 (snapshot + deltas -> barres 1 s)
+  features.py           features causales LOBSTER (imbalance, OFI, rendements laggés)
+  crypto_features.py    features causales OHLCV
+  splits.py             walk-forward purgé + embargo
+  baselines.py          zero-forecast / persistence / linéaire
+  models/seq.py         MLP (défaut) + GRU (optionnel, extra torch)
+  metrics.py            R²_OOS, RMSE, MAE, directional accuracy
+  eval.py               boucle walk-forward Phase 0 + agrégation + Go/No-Go
+  sweep.py              horizon sweep pré-enregistré + figures
+  crypto_eval.py        Phase 0 crypto (walk-forward inter-périodes)
+  state.py              vecteur d'état compact (Phase 1)
+  wm.py                 world model d'état + rollout autorégressif
+  wm_eval.py            Phase 1a : 1-step par dimension + rollout
+  impact.py             overlay d'impact mécaniste (Phase 1b)
+  backtest.py           règles de frontière de journée (multi-jours), testées
+scripts/
+  lobster/              bootstrap_signif, impact_curves, run_gru, tick_regime,
+                        make_synthetic_lobster
+  crypto/               download_binance, fetch_bybit_batch, crypto_lob
+configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1)
+reports/                les 5 write-ups + figures
+tests/                  tests anti-fuite, frontières de journée, impact
 ```
+
+## Limites
+
+- **Phase 0** : une seule journée (2012), 5 tickers → l'out-of-sample est intraday, sans
+  prétention à généraliser dans le temps.
+- **Phase 1 crypto** : 6 jours sur mai–août 2025 (fenêtre réelle de l'archive Bybit
+  gratuite), 3 symboles, top-10 niveaux.
+- La stratégie économique testée est **taker** et naïve (signe, sans sizing ni filtre).
+  L'angle maker/post-only est **explicitement non revendiqué** : il hérite d'un risque de
+  non-exécution non modélisé ici. Le trancher demande un simulateur à impact natif.
+- Le développement post-trade de l'impact (Phase 1b) est **modélisé**, pas mesuré : il n'est
+  pas testable sans contrefactuel.
+- Zéro argent réel, zéro ordre réel : tout tourne sur données historiques.
