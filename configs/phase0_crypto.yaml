@@ -1,5 +1,5 @@
 # =============================================================================
-# Phase 0 — CRYPTO (Binance klines) — robustesse multi-périodes / multi-symboles
+# Phase 0 - CRYPTO (Binance klines) - robustesse multi-périodes / multi-symboles
 # Même question que Phase 0 LOBSTER, mais sur des MOIS de données (walk-forward
 # inter-périodes réel) au lieu d'une seule journée. Protocole FIGÉ.
 # =============================================================================

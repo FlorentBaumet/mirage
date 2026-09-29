@@ -1,10 +1,10 @@
-# Phase 0 (crypto) — robustesse multi-périodes et multi-symboles
+# Phase 0 (crypto) - robustesse multi-périodes et multi-symboles
 
 > **TL;DR.** La question de la Phase 0 (le rendement next-step est-il prédictible mieux
 > qu'une baseline naïve, en OOS honnête ?) est rejouée sur **un an de données 1 min et
 > 4 cryptos majeures**, au lieu d'une seule journée LOBSTER.
 > Verdict inchangé, et désormais robuste dans le temps : à 1 min, le rendement est un
-> **random walk** — aucun modèle ne bat « prédire 0 » sur aucun des 4 coins ni sur aucune
+> **random walk** - aucun modèle ne bat « prédire 0 » sur aucun des 4 coins ni sur aucune
 > des 6 périodes.
 > La directional accuracy est à **50 %** (hasard) et l'edge brut (~0.06 bp) est **~80×
 > sous les frais**.
@@ -22,7 +22,7 @@ Q4 2024).
 
 ## 2. Données
 
-[Binance Vision](https://data.binance.vision/) — dumps klines gratuits, sans clé.
+[Binance Vision](https://data.binance.vision/) - dumps klines gratuits, sans clé.
 4 symboles, **2024 entier**, barres **1 min** : `BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT`,
 **527 009 barres / symbole**. Téléchargement : `scripts/download_binance.py`.
 
@@ -59,10 +59,10 @@ d'avantage réel sur le random walk.
 - À **1 min**, le rendement crypto est un **random walk** : magnitude imprévisible
   (R²_OOS ≤ 0), direction au hasard (50 %). Robuste sur 12 mois et 4 coins.
 - Le signal **directionnel** observé à **1 s** (LOBSTER large-tick, ~80 %) **n'existe plus
-  à 1 min** — cohérent : c'est un phénomène **sous-seconde** (queue/imbalance), lissé à
+  à 1 min** - cohérent : c'est un phénomène **sous-seconde** (queue/imbalance), lissé à
   l'échelle de la minute. Et même à 1 s il était sous l'échelle du spread.
 - Conclusion **transverse** : sur deux marchés (actions US 2012, crypto 2024), deux
-  échelles (1 s, 1 min) et deux largeurs (1 jour, 1 an), la même conclusion — pas d'edge
+  échelles (1 s, 1 min) et deux largeurs (1 jour, 1 an), la même conclusion - pas d'edge
   net exploitable ; le peu de structure est sous-seconde et sous-coûts.
 
 ## 6. Limites

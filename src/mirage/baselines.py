@@ -2,7 +2,7 @@
 
 - zero        : prédire un rendement de 0 (random walk / 'prix inchangé').
 - persistence : prédire r_{t+1} ~ r_t (= feature ret_lag_1, en valeurs BRUTES).
-- linear      : Ridge sur les features (le 'trivial mais réel' — si le modèle ne
+- linear      : Ridge sur les features (le 'trivial mais réel' - si le modèle ne
                 le bat pas, il n'apporte rien).
 
 NB : 'persistence' est traité à part dans eval.py car il réutilise une feature

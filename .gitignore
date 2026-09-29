@@ -9,7 +9,7 @@ __pycache__/
 .ruff_cache/
 .ipynb_checkpoints/
 
-# Données (jamais commitées — voir data/README.md)
+# Données (jamais commitées - voir data/README.md)
 data/raw/
 experiments/
 wandb/

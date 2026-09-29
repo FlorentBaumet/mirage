@@ -1,4 +1,4 @@
-# Pré-enregistrement — Phase 1 crypto (carnet Bybit L2), jeu élargi
+# Pré-enregistrement - Phase 1 crypto (carnet Bybit L2), jeu élargi
 #
 # FIGÉ le 2026-09-29 et COMMITÉ AVANT toute exécution de l'évaluation sur le jeu
 # élargi. Rien ici ne se modifie après avoir vu un résultat (invariant I3). Toute
@@ -12,7 +12,7 @@
 meta:
   nom: phase1_crypto_elargi
   fige_le: "2026-09-29"
-  jeu_precedent: "6 dates x 3 symboles (mai→août 2025) — inclus strictement ci-dessous"
+  jeu_precedent: "6 dates x 3 symboles (mai→août 2025) - inclus strictement ci-dessous"
 
 donnees:
   source: "Bybit L2, quote-saver.bycsi.com/orderbook/linear, dumps ob500 (500 niveaux)"

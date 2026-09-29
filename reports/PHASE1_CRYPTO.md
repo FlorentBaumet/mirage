@@ -1,4 +1,4 @@
-# Phase 1 (crypto) — microstructure du carnet Bybit L2
+# Phase 1 (crypto) - microstructure du carnet Bybit L2
 
 > **TL;DR.** Sur le carnet crypto (3 symboles × 6 jours, mai→août 2025, 1,55 M barres
 > 1 s), le world model d'état trouve une prédictibilité réelle du prochain mouvement de
@@ -14,13 +14,13 @@
 ## 1. Question
 
 Ailleurs dans le projet, l'absence d'edge venait d'abord de l'absence de signal (prix ≈
-random walk). Ici le signal existe : c'est le cas de test décisif — un signal de
+random walk). Ici le signal existe : c'est le cas de test décisif - un signal de
 microstructure réel survit-il aux coûts d'exécution, ou n'est-il qu'un mirage statistique ?
 La réponse nette de coûts est non, et elle est chiffrée ci-dessous.
 
 ## 2. Données
 
-Carnet L2 **Bybit** (gratuit, scriptable — `quote-saver.bycsi.com`, dumps `ob500`,
+Carnet L2 **Bybit** (gratuit, scriptable - `quote-saver.bycsi.com`, dumps `ob500`,
 500 niveaux, snapshot + deltas ~10 ms), reconstruit en **barres 1 s top-10** au format
 LOBSTER.
 
@@ -39,7 +39,7 @@ Pipeline : `scripts/crypto/fetch_bybit_batch.py` → `mirage/data/bybit_lob.py` 
 **Construction multi-jours.** L'état et les fenêtres sont construits par journée puis
 concaténés : aucune fenêtre à cheval sur deux jours, aucun rendement calculé par-dessus la
 nuit, aucun faux retournement de position à minuit. Le walk-forward purgé devient
-inter-jours — train sur les jours passés, test sur les jours futurs. Ces règles sont isolées
+inter-jours - train sur les jours passés, test sur les jours futurs. Ces règles sont isolées
 et testées dans [`mirage/backtest.py`](../src/mirage/backtest.py), avec des tests dédiés aux
 frontières de jours.
 
@@ -48,7 +48,7 @@ de position = demi-spread réel mesuré + frais taker. Jeu de frais testé : {0,
 
 ## 4. Résultats
 
-### 4.1 — Une prédictibilité réelle et robuste
+### 4.1 - Une prédictibilité réelle et robuste
 
 R²_OOS 1-step par dimension (baseline : 0 pour `ret`, no-change pour les niveaux) :
 
@@ -73,10 +73,10 @@ repasse négatif vers 10–20 s (il overfit et compose l'erreur).
 ![rollout](figures/crypto_lob_rollout.png)
 
 Mécanisme : la micro-price et l'imbalance des files prédisent le prochain micro-mouvement du
-mid — effet documenté, fort sur les perps crypto. Le signal ne vient pas du prix passé : la
+mid - effet documenté, fort sur les perps crypto. Le signal ne vient pas du prix passé : la
 persistence est franchement anti-prédictive (−0.81).
 
-### 4.2 — Le coût dépend du symbole
+### 4.2 - Le coût dépend du symbole
 
 Slippage du plus petit ordre testé (0.25 × meilleur niveau), moyenné sur les 6 jours :
 
@@ -92,7 +92,7 @@ BTC/ETH ont des spreads minuscules mais des carnets fins au-delà des 10 premier
 le fill-rate s'effondre avec la taille. SOL a un carnet profond mais un spread ~60× plus
 large.
 
-### 4.3 — Le verdict économique
+### 4.3 - Le verdict économique
 
 | Symbole | frais | gross/barre | turnover | **net/barre** |
 |---|---|---|---|---|
@@ -113,17 +113,17 @@ signal aussi fort qu'ETH) et, à zéro frais, son net est nul (−0.0004 bp) : s
 (~0.3 bp) × son turnover (0.35) consomme exactement le gain brut. Autrement dit :
 
 > Même sans aucun frais, ce signal n'est pas exploitable dès que le spread est réaliste. Le
-> mirage ne tient pas à un choix d'hypothèse de frais — il est structurel.
+> mirage ne tient pas à un choix d'hypothèse de frais - il est structurel.
 
 Note de lecture : les « PnL cumulés » (ex. +327 % / −7 073 %) sont la somme arithmétique des
-rendements par barre sur ~310 k barres de test, pas un rendement de compte composé — au-delà
+rendements par barre sur ~310 k barres de test, pas un rendement de compte composé - au-delà
 de −100 % le compte serait liquidé bien avant. Le chiffre à retenir est le net par barre ; le
 cumul n'illustre que l'ampleur.
 
 ## 5. Interprétation
 
 Le signal est réel et robuste : positif sur 3 symboles × 5 folds inter-jours, mécanisme
-documenté, décroissance de rollout lisse — ni bruit, ni fuite (cf. §5.1).
+documenté, décroissance de rollout lisse - ni bruit, ni fuite (cf. §5.1).
 
 Il n'est pas un edge : le coût de l'exécuter (spread + frais, × un turnover élevé) dépasse le
 gain sur les 3 symboles. Significatif ≠ rentable. Un backtest brut naïf aurait crié victoire ;
@@ -132,7 +132,7 @@ l'éval honnête, pré-enregistrée et nette de coûts, dit non.
 Élargir les données a renforcé les deux moitiés du résultat : le signal est plus crédible
 (6 jours, 3 coins) et le verdict mirage plus solide (SOL le tue sans frais).
 
-### 5.1 — Pourquoi c'est réel, pas une fuite
+### 5.1 - Pourquoi c'est réel, pas une fuite
 
 - Mécanisme documenté (micro-price / imbalance → prochain mid), pas une corrélation fortuite.
 - Décroissance lisse du rollout : signature d'un signal éphémère réel ; une fuite gonflerait
@@ -142,7 +142,7 @@ l'éval honnête, pré-enregistrée et nette de coûts, dit non.
 - Le MLP overfit en rollout là où le linéaire tient, ce qui est cohérent avec un signal réel,
   faible et essentiellement linéaire.
 
-### 5.2 — L'angle ouvert : maker / post-only
+### 5.2 - L'angle ouvert : maker / post-only
 
 La stratégie testée est taker. En maker / post-only (frais nul voire rebate), l'arithmétique
 change, mais le risque de non-exécution n'est pas modélisé ici et n'est donc pas revendiqué.

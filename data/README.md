@@ -1,12 +1,12 @@
-# Données — LOBSTER (Phase 0)
+# Données - LOBSTER (Phase 0)
 
 `data/raw/` est **gitignored** : on ne commit jamais les données.
 
 ## Récupérer le sample gratuit (réel)
 1. Aller sur https://lobsterdata.com/info/DataSamples.php
 2. Télécharger, pour la date **2012-06-21**, ce qu'attend `configs/phase0.yaml` :
-   - **AMZN, GOOG, INTC, MSFT** — journée complète, niveau **10** ;
-   - **AAPL** — niveau **50**, sur **09:30–10:30 seulement** (c'est le seul extrait
+   - **AMZN, GOOG, INTC, MSFT** - journée complète, niveau **10** ;
+   - **AAPL** - niveau **50**, sur **09:30–10:30 seulement** (c'est le seul extrait
      L50 d'une heure du sample gratuit).
 3. Dézipper dans `data/raw/` (fichiers à plat). Les noms attendus sont
    `{ticker}_{date}_{start_ms}_{end_ms}_message_{niveaux}.csv` (idem `_orderbook_`),

@@ -1,4 +1,4 @@
-"""Overlay d'impact MÉCANISTE (Phase 1b) — action-conditioning sur LOBSTER.
+"""Overlay d'impact MÉCANISTE (Phase 1b) - action-conditioning sur LOBSTER.
 
 Partie MESURABLE (ancrée dans le vrai carnet) :
   un ordre au marché de taille q « mange » les niveaux du carnet -> on calcule

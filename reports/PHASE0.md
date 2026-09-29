@@ -1,4 +1,4 @@
-# Phase 0 — Un world model simple bat-il une baseline naïve, évalué honnêtement ?
+# Phase 0 - Un world model simple bat-il une baseline naïve, évalué honnêtement ?
 
 > **TL;DR.** Sur 5 actions (LOBSTER, 2012-06-21), un modèle de séquence simple ne bat
 > aucune baseline triviale en prédiction du rendement next-step du mid, à aucun horizon
@@ -8,7 +8,7 @@
 > 1 s), invisible dans l'erreur quadratique et située sous l'échelle du spread.
 > Le résultat est confirmé par block bootstrap : le signe est significatif (IC 95 %
 > excluant 0.5 sur INTC/MSFT/AMZN) mais le rendement net de coûts est négatif sur les
-> 5 tickers — significatif n'est pas rentable.
+> 5 tickers - significatif n'est pas rentable.
 
 ---
 
@@ -19,7 +19,7 @@ l'horizon suivant mieux que des baselines naïves, en out-of-sample honnête
 (anti-lookahead, walk-forward) ? Si non, c'est un résultat valide et documenté.
 
 L'évaluation porte sur le marché passif, sans modéliser l'impact des ordres : l'action-
-conditioning est repoussé en Phase 1. Aucune position, aucun trade — prédiction pure.
+conditioning est repoussé en Phase 1. Aucune position, aucun trade - prédiction pure.
 
 ## 2. Données
 
@@ -61,7 +61,7 @@ lecture des résultats.
 Horizon sweep pré-enregistré sur le grid figé `{1, 5, 10, 30, 60}` s, tout reporté
 (aucun cherry-pick). Valeurs pooled (moyenne sur tickers × folds).
 
-### 4.1 R²_OOS — magnitude imprévisible à tous les horizons
+### 4.1 R²_OOS - magnitude imprévisible à tous les horizons
 
 | Horizon | linear | mlp | persistence | zero |
 |---|---|---|---|---|
@@ -78,7 +78,7 @@ magnitude du rendement n'est pas prédictible.
 
 ![R2_OOS vs horizon](figures/horizon_sweep_r2oos.png)
 
-### 4.2 Directional accuracy — un signal de signe réel, qui décroît proprement
+### 4.2 Directional accuracy - un signal de signe réel, qui décroît proprement
 
 | Horizon | linear | mlp | persistence |
 |---|---|---|---|
@@ -113,7 +113,7 @@ microstructure bien documenté : sur les large-tick stocks, le mid bouge peu et 
 du carnet prédit fortement le prochain micro-mouvement. Les small-tick (AMZN/GOOG/AAPL,
 prix élevés, spread large) sont au niveau du hasard.
 
-### 4.4 Significativité (block bootstrap) et coûts — significatif mais non rentable
+### 4.4 Significativité (block bootstrap) et coûts - significatif mais non rentable
 
 Block bootstrap circulaire (blocs de 60 s, 2000 réplicats, respecte l'autocorrélation des
 cibles chevauchantes) sur les prédictions OOS du modèle linéaire à 1 s, complété par une
@@ -129,7 +129,7 @@ analyse de coûts (stratégie « trade le signe », ~1 spread payé par retourne
 | GOOG | 0.474 | [0.456, 0.492] | −0.015 | [−0.021, −0.011] | 0.002 | 2.04 | **−0.97** |
 
 - Statistiquement : le signe est significativement supérieur au hasard sur INTC, MSFT et
-  (faiblement) AMZN — leur IC 95 % de dir_acc exclut 0.5 (p < 1e-3). GOOG est sous le
+  (faiblement) AMZN - leur IC 95 % de dir_acc exclut 0.5 (p < 1e-3). GOOG est sous le
   hasard, AAPL est au hasard (IC contient 0.5). Le signal large-tick est réel, pas un
   bruit de fold.
 - Économiquement : l'edge directionnel brut (≤ 0.1 bp/barre) est 20–50× plus petit que le
@@ -160,7 +160,7 @@ Robuste sur 5 tickers × 5 horizons, et au passage MLP → GRU (§4.5). C'est un
 valide, pas un échec.
 
 > Ce qui est prédictible : le **signe** du mid à très court terme sur les **large-tick**.
-> Ce qui ne l'est pas : la **magnitude** du rendement, à toute échelle testée — et le
+> Ce qui ne l'est pas : la **magnitude** du rendement, à toute échelle testée - et le
 > signal directionnel ne survit pas à l'échelle du spread.
 
 ## 5. Interprétation
@@ -174,7 +174,7 @@ L'écart entre les deux métriques est le résultat :
 
 Un edge spectaculaire en statistique (83 % de bonne direction) est donc inexploitable net
 de coûts : le gain directionnel est sous l'échelle du spread. C'est le phénomène de
-model exploitation / mirage que l'évaluation vise à débusquer — ici dès la prédiction
+model exploitation / mirage que l'évaluation vise à débusquer - ici dès la prédiction
 pure, sans même un agent. Une métrique flatteuse (accuracy) est contredite par la métrique
 économique (R² et coûts).
 

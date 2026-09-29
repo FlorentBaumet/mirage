@@ -158,7 +158,7 @@ def main():
                     transform=ax.transAxes, fontsize=8, color="green")
         ax.set_xlabel("horizon de rollout (secondes)")
         ax.set_ylabel("R²_OOS rendement cumulé")
-        ax.set_title("World model d'état — rollout vs random walk")
+        ax.set_title("World model d'état - rollout vs random walk")
         ax.legend(loc="lower left")
         ax.grid(alpha=0.3)
         fig.tight_layout()

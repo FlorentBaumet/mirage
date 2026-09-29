@@ -1,5 +1,5 @@
 # =============================================================================
-# Phase 1a — WORLD MODEL D'ÉTAT (passif) — PROTOCOLE FIGÉ (I3)
+# Phase 1a - WORLD MODEL D'ÉTAT (passif) - PROTOCOLE FIGÉ (I3)
 # État compact multi-features, prédit + déroulé en rollout. Pas encore d'impact
 # (action-conditioning = Phase 1b). Mêmes données / mêmes splits que Phase 0.
 # =============================================================================

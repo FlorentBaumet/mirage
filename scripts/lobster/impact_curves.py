@@ -1,4 +1,4 @@
-"""Phase 1b — caractérisation de l'impact + démo du world model action-conditionné.
+"""Phase 1b - caractérisation de l'impact + démo du world model action-conditionné.
 
 1) Courbes de COÛT (mesurables, vrai carnet) : slippage & impact immédiat vs taille
    d'ordre, par ticker. Relie le « mirage » de Phase 0 : à quel point trader coûte.
@@ -66,7 +66,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     # --- 1) courbes de coût par ticker ---
-    print("=== Coût d'exécution (achat) — slippage en bp vs taille (k × L1) ===")
+    print("=== Coût d'exécution (achat) - slippage en bp vs taille (k × L1) ===")
     curves = {}
     for inst in cfg["data"]["instruments"]:
         bars = _bars(cfg, inst)
@@ -82,7 +82,7 @@ def main():
     ax.set_xscale("log", base=2)
     ax.set_xlabel("taille d'ordre  (k × taille du meilleur niveau)")
     ax.set_ylabel("slippage moyen (bp)")
-    ax.set_title("Coût d'exécution vs taille — manger le carnet")
+    ax.set_title("Coût d'exécution vs taille - manger le carnet")
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -100,7 +100,7 @@ def main():
     ax.axhline(0, color="grey", ls="--", lw=1)
     ax.set_xlabel("horizon (secondes)")
     ax.set_ylabel("déviation du mid (bp)")
-    ax.set_title("World model action-conditionné — « et si j'achète maintenant ? »")
+    ax.set_title("World model action-conditionné - « et si j'achète maintenant ? »")
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()

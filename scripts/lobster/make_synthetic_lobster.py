@@ -4,7 +4,7 @@ pipeline sans télécharger les vraies données.
 Les fichiers produits portent exactement les noms, sessions et profondeurs que
 `configs/phase0.yaml` attend (mêmes 5 instruments que le sample réel). Le mid suit
 une marche aléatoire en cents et le carnet est reconstruit autour : **aucun
-résultat obtenu dessus n'a de signification** — c'est un banc d'essai du code,
+résultat obtenu dessus n'a de signification** - c'est un banc d'essai du code,
 pas une mesure de marché.
 
     python scripts/lobster/make_synthetic_lobster.py
@@ -21,7 +21,7 @@ DATE = "2012-06-21"
 FULL_DAY = (34200, 57600)   # 09:30 -> 16:00
 ONE_HOUR = (34200, 37800)   # 09:30 -> 10:30 (le sample AAPL L50 réel)
 
-# (ticker, profondeur du fichier, session, prix initial $) — aligné sur phase0.yaml
+# (ticker, profondeur du fichier, session, prix initial $) - aligné sur phase0.yaml
 INSTRUMENTS = [
     ("AMZN", 10, FULL_DAY, 222.0),
     ("GOOG", 10, FULL_DAY, 570.0),
@@ -79,7 +79,7 @@ def write_instrument(ticker, levels, session, price0, n_events, rng, out_dir) ->
 def main(seed: int = 0):
     rng = np.random.default_rng(seed)
     os.makedirs(OUT_DIR, exist_ok=True)
-    print(f"Échantillon synthétique dans {OUT_DIR}/ — données bidon, ne rien en conclure.")
+    print(f"Échantillon synthétique dans {OUT_DIR}/ - données bidon, ne rien en conclure.")
     for ticker, levels, session, price0 in INSTRUMENTS:
         n = write_instrument(ticker, levels, session, price0, N_EVENTS, rng, OUT_DIR)
         print(f"  {ticker}: {n} events, {levels} niveaux")

@@ -1,8 +1,8 @@
-# MIRAGE — world model de marché et évaluation honnête
+# MIRAGE - world model de marché et évaluation honnête
 
 Un **world model de marché** (carnet d'ordres et prix) évalué par une procédure
 **anti-lookahead et pré-enregistrée**, entièrement out-of-sample. Pas d'agent, pas de
-trade réel : la question posée est de savoir si l'on peut *mesurer* un edge — et le
+trade réel : la question posée est de savoir si l'on peut *mesurer* un edge - et le
 projet existe pour montrer comment on le **réfute**.
 
 Le résultat porteur : sur le carnet crypto réel, le world model trouve un signal de prix
@@ -12,7 +12,7 @@ elle est déjà morte **à zéro frais**. Le signal est réel ; l'edge est un mi
 
 ![Un edge réel qui est un mirage net de frais](reports/figures/crypto_lob_mirage.png)
 
-## Le résultat central — Phase 1 (carnet Bybit L2)
+## Le résultat central - Phase 1 (carnet Bybit L2)
 
 3 symboles × 6 jours, 1,55 M barres 1 s. Position = signe de la prédiction linéaire
 out-of-sample ; coût à chaque changement de position = demi-spread **réellement mesuré** +
@@ -26,25 +26,25 @@ frais taker.
 
 SOL a le **meilleur** signal brut des trois, et pourtant son net est **nul sans le moindre
 frais** : son demi-spread (~0.3 bp) × son turnover (0.35) consomme exactement le gain. Le
-mirage ne repose donc sur aucune hypothèse de frais — il est structurel. Détail :
+mirage ne repose donc sur aucune hypothèse de frais - il est structurel. Détail :
 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md).
 
 ## La thèse, démontrée sur cinq jeux de données
 
 | Phase | Données | Question | Verdict |
 |---|---|---|---|
-| [**0**](reports/PHASE0.md) — LOBSTER | 5 actions, 1 journée 2012, barres 1 s | Le rendement du mid est-il prédictible ? | **NO-GO** : R²_OOS ≤ 0 de 1 à 60 s. Le *signe* est prédictible sur les large-tick (82–83 % à 1 s) mais pour un gain 20–50× plus petit que le demi-spread. |
+| [**0**](reports/PHASE0.md) - LOBSTER | 5 actions, 1 journée 2012, barres 1 s | Le rendement du mid est-il prédictible ? | **NO-GO** : R²_OOS ≤ 0 de 1 à 60 s. Le *signe* est prédictible sur les large-tick (82–83 % à 1 s) mais pour un gain 20–50× plus petit que le demi-spread. |
 | [**0 (crypto)**](reports/PHASE0_CRYPTO.md) | 4 cryptos, 1 an de klines 1 min | La question tient-elle sur des mois ? | Random walk (R²_OOS ≤ 0 sur 4 coins × 6 périodes, dir ≈ 50 %). Le signal sous-seconde a disparu à 1 min. |
 | [**1a**](reports/PHASE1.md) | LOBSTER | Prédire le *vecteur d'état* du carnet plutôt qu'un scalaire | Le prix reste un random walk ; la forme du carnet (spread, imbalances, micro-price) est légèrement prévisible linéairement (R²_OOS 0.02–0.09). |
 | [**1b**](reports/PHASE1B.md) | LOBSTER | Action-conditionner le world model (impact de ses propres ordres) | Le plus petit ordre coûte déjà **1.7–3 bp** contre un edge prédictible **≤ 0.1 bp**. Mirage confirmé côté exécution. |
 | [**1 (crypto LOB)**](reports/PHASE1_CRYPTO.md) | 3 symboles × 6 jours, carnet Bybit L2, 1,55 M barres 1 s | Sait-on distinguer un vrai edge d'un mirage quand le signal existe ? | **Le cas d'école** : signal réel et robuste (R²_OOS ≈ +0.067), backtest brut flatteur, net de coûts négatif partout. |
 
-## Méthodologie — ce qui rend l'évaluation crédible
+## Méthodologie - ce qui rend l'évaluation crédible
 
 - **Walk-forward purgé** : train sur le passé, test sur le futur, jamais l'inverse.
   Embargo ≥ horizon et ≥ lookback, pour qu'une cible regardant `h` barres en avant ne
   puisse pas empiéter sur le train.
-- **Scaler ajusté sur le train seul**, puis appliqué au test — aucune statistique du futur.
+- **Scaler ajusté sur le train seul**, puis appliqué au test - aucune statistique du futur.
 - **Baselines obligatoires** à chaque étape (`zero`/random walk, `persistence`, `linear`) :
   un modèle qui ne les bat pas n'apporte rien, et on le dit.
 - **Métrique primaire pré-enregistrée** (R²_OOS = 1 − SSE(modèle)/SSE(baseline)) et grille
@@ -68,7 +68,7 @@ py -3.11 -m venv .venv
 
 ## Reproduire
 
-**Sans télécharger la moindre donnée** — le pipeline complet tourne sur un échantillon
+**Sans télécharger la moindre donnée** - le pipeline complet tourne sur un échantillon
 synthétique, et l'évaluateur y rend NO-GO (comportement attendu sur des données sans
 signal) :
 
@@ -81,7 +81,7 @@ signal) :
 **Sur les vraies données** (voir [`data/README.md`](data/README.md)) :
 
 ```powershell
-# Phase 0 (LOBSTER) — éval + horizon sweep + régime tick + significativité + GRU
+# Phase 0 (LOBSTER) - éval + horizon sweep + régime tick + significativité + GRU
 .\.venv\Scripts\python.exe -m mirage.eval --config configs\phase0.yaml
 .\.venv\Scripts\python.exe -m mirage.sweep --config configs\phase0.yaml
 .\.venv\Scripts\python.exe scripts\lobster\tick_regime.py

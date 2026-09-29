@@ -1,11 +1,11 @@
-"""Significativité du signal carnet crypto — block bootstrap PAR JOUR.
+"""Significativité du signal carnet crypto - block bootstrap PAR JOUR.
 
 Le jeu publié (6 jours) ne portait aucun intervalle de confiance : R²_OOS ≈ +0.067 et
 « net négatif dès 2 bp » étaient des moyennes ponctuelles. Ici on rééchantillonne les
 JOURNÉES (les blocs sont les journées) pour obtenir des IC95 % qui respectent la
 dépendance intra-jour et la persistance inter-jours des régimes.
 
-Le protocole — B, graines, unité de bloc, niveaux de frais, règles de décision — est
+Le protocole - B, graines, unité de bloc, niveaux de frais, règles de décision - est
 FIGÉ dans `configs/phase1_crypto_prereg.yaml`, commité avant toute exécution.
 
 Ce script réutilise EXACTEMENT les prédictions OOS et les coûts produits par
@@ -144,7 +144,7 @@ def main() -> None:
         if m and m.group(1) in symbols:
             files[m.group(1)] = pf
     if not files:
-        raise SystemExit(f"Aucun crypto_lob_oos_*.npz dans {OOS_DIR}/ — lance d'abord "
+        raise SystemExit(f"Aucun crypto_lob_oos_*.npz dans {OOS_DIR}/ - lance d'abord "
                          "scripts/crypto/crypto_lob.py")
 
     rows = []
@@ -155,7 +155,7 @@ def main() -> None:
     df = pd.DataFrame(rows)
 
     pd.set_option("display.width", 200)
-    print(f"=== Bootstrap par jour — B={boot_cfg['n_boot']}, unité = la journée ; "
+    print(f"=== Bootstrap par jour - B={boot_cfg['n_boot']}, unité = la journée ; "
           f"variante robustesse = blocs contigus de {blk} jours ===")
 
     print("\n--- Signal : R²_OOS(rendement) ---")

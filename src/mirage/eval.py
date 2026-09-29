@@ -83,7 +83,7 @@ def walk_forward_predictions(X, y, persist, cfg: dict, embargo: int):
     `(fold, nom_estimateur, y_vrai, y_prédit)`.
 
     L'embargo est laissé à l'appelant : il dépend de la cible (`horizon`) et, en
-    crypto, d'une fenêtre de volatilité — purger trop peu laisserait le dernier
+    crypto, d'une fenêtre de volatilité - purger trop peu laisserait le dernier
     label du train empiéter sur le test.
     """
     sp = cfg["split"]
@@ -168,7 +168,7 @@ def go_no_go(res: pd.DataFrame, model_name: str) -> str:
         f"  modèle bat zero    sur {maj_zero}/{n_tk} tickers\n"
         f"  modèle bat linéaire sur {maj_lin}/{n_tk} tickers\n"
         f"  --> VERDICT : {verdict}\n"
-        f"  (NO-GO = résultat valide et documenté, pas un échec — I3)\n"
+        f"  (NO-GO = résultat valide et documenté, pas un échec - I3)\n"
     )
 
 

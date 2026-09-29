@@ -1,7 +1,7 @@
 """Éval Phase 0 CRYPTO : walk-forward purgé sur des mois de klines, multi-symboles.
 
 Même colonne vertébrale que l'éval LOBSTER (splits purgés, scaler train-only,
-baselines, R²_OOS pré-enregistré) — mais sur des MOIS de données, donc le
+baselines, R²_OOS pré-enregistré) - mais sur des MOIS de données, donc le
 walk-forward est inter-périodes (robustesse temporelle réelle, pas un seul jour).
 
     python -m mirage.crypto_eval --config configs/phase0_crypto.yaml --out experiments
@@ -94,7 +94,7 @@ def main():
         ax.axhline(0, color="grey", ls="--", lw=1, label="random walk (=0)")
         ax.set_xlabel("fold walk-forward (≈ période, 2024)")
         ax.set_ylabel("R²_OOS (modèle)")
-        ax.set_title("Crypto 1 min — R²_OOS par période (robustesse temporelle)")
+        ax.set_title("Crypto 1 min - R²_OOS par période (robustesse temporelle)")
         ax.legend()
         ax.grid(alpha=0.3)
         fig.tight_layout()

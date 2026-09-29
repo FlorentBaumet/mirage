@@ -1,4 +1,4 @@
-# Phase 1a — World model d'état passif : prédictibilité du prix et de la forme du carnet
+# Phase 1a - World model d'état passif : prédictibilité du prix et de la forme du carnet
 
 > **TL;DR.** Un world model d'état passif prédit un vecteur d'état de 5 dimensions, déroulé
 > en autorégressif, évalué en walk-forward purgé sur 5 tickers.
@@ -43,7 +43,7 @@ Phase 0 :
   (`mirage/wm.py`), déroulé en autorégressif pour le rollout.
 - Baselines : `persistence` (l'état ne bouge pas = martingale), `mean`, `linear` (Ridge
   multi-sorties).
-- Métrique 1-step : R²_OOS par dimension, contre la baseline naïve appropriée — random walk
+- Métrique 1-step : R²_OOS par dimension, contre la baseline naïve appropriée - random walk
   (0) pour `ret`, no-change pour les niveaux (spread, imbalance...). Walk-forward expansif
   purgé, embargo ≥ lookback, scaler fit train-only (dans les modèles).
 - Métrique rollout : R²_OOS du rendement cumulé contre random walk (= 0), en fonction de
@@ -51,7 +51,7 @@ Phase 0 :
 
 ## 4. Résultats
 
-### 4.1 — 1-step, R²_OOS par dimension (pooled sur 5 tickers)
+### 4.1 - 1-step, R²_OOS par dimension (pooled sur 5 tickers)
 
 | Dimension | linear | mlp | mean | Lecture |
 |---|---|---|---|---|
@@ -66,7 +66,7 @@ Phase 0 :
 - `mean` est catastrophique sur les niveaux : ces quantités sont autocorrélées, et
   « no-change » l'emporte largement sur la moyenne.
 
-### 4.2 — Rollout : R²_OOS du rendement cumulé vs random walk
+### 4.2 - Rollout : R²_OOS du rendement cumulé vs random walk
 
 ![rollout](figures/phase1_rollout.png)
 

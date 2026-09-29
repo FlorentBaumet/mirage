@@ -1,4 +1,4 @@
-"""Tests anti-lookahead — la garantie d'honnêteté (I3).
+"""Tests anti-lookahead - la garantie d'honnêteté (I3).
 
 Vérifient :
   1. alignement features/cible (la cible est bien le FUTUR ; ret_lag_1 le présent),

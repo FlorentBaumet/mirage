@@ -1,4 +1,4 @@
-"""Walk-forward purgé avec embargo — la colonne vertébrale (I3).
+"""Walk-forward purgé avec embargo - la colonne vertébrale (I3).
 
 On n'utilise JAMAIS de shuffle. Train = passé, test = futur. Entre la fin du
 train et le début du test on laisse un trou (`embargo`) >= à la fenêtre de

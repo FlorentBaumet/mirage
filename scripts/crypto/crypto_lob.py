@@ -140,7 +140,7 @@ def main():
 
     cache = load_cached()
     if not cache:
-        raise SystemExit("Aucun .pkl dans data/raw/crypto_lob — lance d'abord "
+        raise SystemExit("Aucun .pkl dans data/raw/crypto_lob - lance d'abord "
                          "scripts/fetch_bybit_batch.py")
     print("=== Couverture ===")
     for sym, pk in cache.items():
@@ -166,7 +166,7 @@ def main():
     res1, resR = pd.DataFrame(all1), pd.DataFrame(allR)
     pd.set_option("display.width", 160)
 
-    print("\n=== Phase 1a — R²_OOS 1-step par dimension "
+    print("\n=== Phase 1a - R²_OOS 1-step par dimension "
           "(baseline: 0 pour ret, no-change sinon) ===")
     print(res1.pivot_table(index="dim", columns="model", values="r2", aggfunc="mean")
           .reindex(STATE_COLS).round(5).to_string())
@@ -174,16 +174,16 @@ def main():
     print(res1[res1.dim == "ret"].pivot_table(index="symbol", columns="model",
                                               values="r2", aggfunc="mean").round(5).to_string())
 
-    print("\n=== Phase 1a — rollout : R²_OOS rendement cumulé vs random walk ===")
+    print("\n=== Phase 1a - rollout : R²_OOS rendement cumulé vs random walk ===")
     pivR = resR.pivot_table(index="horizon", columns="model", values="r2", aggfunc="mean")
     print(pivR.round(5).to_string())
 
-    print("\n=== Phase 1b — coût d'exécution (achat), moyenné sur les jours ===")
+    print("\n=== Phase 1b - coût d'exécution (achat), moyenné sur les jours ===")
     for sym, c in costs.items():
         print(f"\n[{sym}]")
         print(c.round(4).to_string(index=False))
 
-    print("\n=== VERDICT économique — l'edge survit-il aux frais ? ===")
+    print("\n=== VERDICT économique - l'edge survit-il aux frais ? ===")
     econ = pd.concat(econ_rows, ignore_index=True)
     print(econ.to_string(index=False))
     econ.to_csv(os.path.join(args.out, "crypto_lob_economic.csv"), index=False)
@@ -201,7 +201,7 @@ def main():
     ax.set_xscale("log", base=2)
     ax.set_xlabel("taille (k × meilleur niveau)")
     ax.set_ylabel("slippage moyen (bp)")
-    ax.set_title("Crypto (Bybit L2) — coût d'exécution vs taille")
+    ax.set_title("Crypto (Bybit L2) - coût d'exécution vs taille")
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -217,7 +217,7 @@ def main():
                 max(0.05, float(pivR[learned].max().max()) * 1.2))
     ax.set_xlabel("horizon de rollout (s)")
     ax.set_ylabel("R²_OOS rendement cumulé")
-    ax.set_title("Crypto (Bybit L2) — world model d'état, rollout vs random walk")
+    ax.set_title("Crypto (Bybit L2) - world model d'état, rollout vs random walk")
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -250,7 +250,7 @@ def main():
     ax.axhline(0, color="grey", ls="--", lw=1)
     ax.set_xlabel("barres de test (1 s, multi-jours)")
     ax.set_ylabel("PnL cumulé (%)")
-    ax.set_title(f"Crypto {sym0} — un edge réel qui est un mirage net de frais")
+    ax.set_title(f"Crypto {sym0} - un edge réel qui est un mirage net de frais")
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()

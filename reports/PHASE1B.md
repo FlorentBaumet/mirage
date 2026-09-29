@@ -1,9 +1,9 @@
-# Phase 1b — Action-conditioning : impact des ordres propres
+# Phase 1b - Action-conditioning : impact des ordres propres
 
 > **TL;DR.** Le world model devient action-conditionné : état suivant = évolution passive
 > (Phase 1a) + impact de l'ordre.
-> L'impact a une partie mécanique, mesurable sur le vrai carnet — un ordre mange les
-> niveaux, et le slippage comme le saut de mid sont calculés exactement — et une dynamique
+> L'impact a une partie mécanique, mesurable sur le vrai carnet - un ordre mange les
+> niveaux, et le slippage comme le saut de mid sont calculés exactement - et une dynamique
 > de décroissance modélisée, faute de contrefactuel sur l'historique.
 > Le coût du plus petit ordre est de 1.7–3 bp (le demi-spread) et monte à 8–12 bp avec la
 > taille.
@@ -46,7 +46,7 @@ avec la taille ; un ordre supérieur à la profondeur visible n'est pas rempli.
 
 ## 4. Résultats
 
-### 4.1 — Courbes de coût (mesurable)
+### 4.1 - Courbes de coût (mesurable)
 
 Slippage moyen (bp) pour acheter une taille `q = k × (taille du meilleur niveau)`,
 out-of-sample sur la journée, par ticker :
@@ -66,19 +66,19 @@ out-of-sample sur la journée, par ticker :
   55 % ; leurs carnets sont fins, ce qui interdit de trader gros. Les large-tick (INTC/MSFT)
   ont des carnets profonds mais coûtent quand même 10–12 bp à 8×L1.
 
-### 4.2 — Verrou anti-mirage
+### 4.2 - Verrou anti-mirage
 
 | | valeur | source |
 |---|---|---|
 | Edge directionnel prédictible | ≤ 0.1 bp / barre | cf. §4.4 de PHASE0.md |
 | Coût du plus petit ordre | 1.7 – 3 bp | Phase 1b (ce document) |
-| Ratio coût / edge | × 17 à × 30 | — |
+| Ratio coût / edge | × 17 à × 30 | - |
 
 Le signal ne peut pas être monétisé : le franchir une seule fois coûte 20–30 fois ce qu'il
 rapporte, et trader plus gros coûte encore plus, sans même être rempli. Le mirage de la
 Phase 0 est donc établi côté exécution, sur le vrai carnet.
 
-### 4.3 — World model action-conditionné
+### 4.3 - World model action-conditionné
 
 `état suivant = évolution passive (Phase 1a) + impact de l'ordre`. Démonstration sur MSFT,
 pour un achat de 2×L1 :

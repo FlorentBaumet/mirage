@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mirage"
 version = "0.0.1"
-description = "MIRAGE — world model de marché (carnet/prix) et évaluation honnête out-of-sample"
+description = "MIRAGE - world model de marché (carnet/prix) et évaluation honnête out-of-sample"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Florent Baumet" }]

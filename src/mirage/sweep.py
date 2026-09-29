@@ -1,4 +1,4 @@
-"""Horizon sweep PRÉ-ENREGISTRÉ — caractérise 'ce qui est prédictible vs pas'.
+"""Horizon sweep PRÉ-ENREGISTRÉ - caractérise 'ce qui est prédictible vs pas'.
 
 Balaie le grid figé `target.horizons` (en barres = secondes), sur tous les tickers,
 pour tous les estimateurs. On reporte TOUT (aucun cherry-pick) : tables + figures.
