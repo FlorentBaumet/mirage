@@ -97,6 +97,23 @@ class MLPWM(_Scaled):
         return self.model.predict(self._sx(X)) * self.ysd + self.ymu
 
 
+def make_wm_suite(Xtr, Ytr, model_name: str, cfg: dict | None = None) -> dict:
+    """Entraîne les baselines du world model + le modèle focal demandé.
+
+    Les baselines sont toujours présentes (persistence/mean/linear) : un modèle
+    focal qui ne les bat pas n'apporte rien. `model_name` peut désigner une
+    baseline déjà construite, auquel cas rien n'est ajouté.
+    """
+    models = {
+        "persistence": PersistenceWM().fit(Xtr, Ytr),
+        "mean": MeanWM().fit(Xtr, Ytr),
+        "linear": LinearWM().fit(Xtr, Ytr),
+    }
+    if model_name not in models:
+        models[model_name] = make_model(model_name, cfg or {}).fit(Xtr, Ytr)
+    return models
+
+
 def make_model(name: str, cfg: dict):
     if name == "mlp":
         return MLPWM(hidden=tuple(cfg.get("hidden", [64, 32])),

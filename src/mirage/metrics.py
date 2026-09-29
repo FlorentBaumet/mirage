@@ -29,6 +29,19 @@ def r2_oos(y, p, baseline=None) -> float:
     return float(1.0 - sse_m / sse_b)
 
 
+def r2_per_dim(Y, pred, base) -> np.ndarray:
+    """R²_OOS colonne par colonne, contre une baseline `base` non constante.
+
+    Utilisé pour l'évaluation par dimension du vecteur d'état, où la baseline
+    appropriée diffère selon la dimension : 0 (random walk) pour un rendement,
+    « no-change » pour un niveau (spread, imbalance...).
+    """
+    Y, pred, base = np.asarray(Y, float), np.asarray(pred, float), np.asarray(base, float)
+    sse_m = np.sum((Y - pred) ** 2, axis=0)
+    sse_b = np.sum((Y - base) ** 2, axis=0)
+    return 1.0 - sse_m / np.where(sse_b == 0, np.nan, sse_b)
+
+
 def directional_accuracy(y, p) -> float:
     """Taux de bon signe (on ignore les cibles nulles)."""
     y, p = np.asarray(y, float), np.asarray(p, float)

@@ -17,8 +17,6 @@ import pandas as pd
 import yaml
 from sklearn.exceptions import ConvergenceWarning
 
-warnings.filterwarnings("ignore", category=ConvergenceWarning)
-
 from .data.bars import to_clock_bars
 from .data.lobster import load_sample
 from .features import build_features
@@ -26,9 +24,13 @@ from .metrics import directional_accuracy, mae, r2_oos, rmse
 from .models import make_estimators
 from .splits import walk_forward_splits
 
+# Les MLP de sklearn convergent bruyamment sur ces cibles quasi-bruitées : le
+# message n'apprend rien, on le tait à l'échelle du module.
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
 
 def load_config(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -72,6 +74,37 @@ def standardize(train: pd.DataFrame, test: pd.DataFrame):
     return (train - mu) / sd, (test - mu) / sd
 
 
+def walk_forward_predictions(X, y, persist, cfg: dict, embargo: int):
+    """Prédictions out-of-sample des folds walk-forward purgés.
+
+    Boucle commune aux évals Phase 0 (LOBSTER et crypto) : split purgé par fold,
+    standardisation ajustée sur le train seul (anti-fuite I3), baselines et modèle
+    focal ré-instanciés puis entraînés sur le train. Produit
+    `(fold, nom_estimateur, y_vrai, y_prédit)`.
+
+    L'embargo est laissé à l'appelant : il dépend de la cible (`horizon`) et, en
+    crypto, d'une fenêtre de volatilité — purger trop peu laisserait le dernier
+    label du train empiéter sur le test.
+    """
+    sp = cfg["split"]
+    for fi, (tr, te) in enumerate(walk_forward_splits(
+            len(X), sp["n_folds"], embargo, sp["min_train_frac"], sp["scheme"])):
+        Xtr, Xte = X.iloc[tr], X.iloc[te]
+        ytr, yte = y.iloc[tr].to_numpy(), y.iloc[te].to_numpy()
+
+        if sp.get("standardize", True):
+            Xtr, Xte = standardize(Xtr, Xte)
+        Xtr_a, Xte_a = Xtr.to_numpy(), Xte.to_numpy()
+
+        est, _ = make_estimators(cfg["model"], cfg["baselines"])
+        for name, model in est.items():
+            model.fit(Xtr_a, ytr)
+            yield fi, name, yte, model.predict(Xte_a)
+
+        if "persistence" in cfg["baselines"]:
+            yield fi, "persistence", yte, persist.iloc[te].to_numpy()
+
+
 def _score(ticker, fold, name, y, pred) -> dict:
     return dict(
         ticker=ticker, fold=fold, estimator=name,
@@ -101,24 +134,8 @@ def run_phase0(cfg: dict):
             print(f"[!] {ticker}: trop peu de barres ({n}) → ignoré")
             continue
 
-        for fi, (tr, te) in enumerate(folds):
-            Xtr, Xte = X.iloc[tr], X.iloc[te]
-            ytr, yte = y.iloc[tr].to_numpy(), y.iloc[te].to_numpy()
-
-            if sp.get("standardize", True):
-                Xtr_s, Xte_s = standardize(Xtr, Xte)
-            else:
-                Xtr_s, Xte_s = Xtr, Xte
-            Xtr_a, Xte_a = Xtr_s.to_numpy(), Xte_s.to_numpy()
-
-            est, _ = make_estimators(cfg["model"], cfg["baselines"])
-            for name, model in est.items():
-                model.fit(Xtr_a, ytr)
-                rows.append(_score(ticker, fi, name, yte, model.predict(Xte_a)))
-
-            if "persistence" in cfg["baselines"]:
-                rows.append(_score(ticker, fi, "persistence", yte,
-                                   persist.iloc[te].to_numpy()))
+        for fi, name, yte, pred in walk_forward_predictions(X, y, persist, cfg, embargo):
+            rows.append(_score(ticker, fi, name, yte, pred))
 
     return pd.DataFrame(rows), pd.DataFrame(meta)
 
@@ -146,7 +163,8 @@ def go_no_go(res: pd.DataFrame, model_name: str) -> str:
     return (
         f"\n=== Go/No-Go ({model_name}) ===\n"
         f"  R2_OOS moyen (pooled)  modèle  : {m_mean:+.6f}  (bat zero ? {beats_zero})\n"
-        f"  R2_OOS moyen (pooled)  linéaire: {lin_mean:+.6f}  (modèle > linéaire ? {beats_linear})\n"
+        f"  R2_OOS moyen (pooled)  linéaire: {lin_mean:+.6f}"
+        f"  (modèle > linéaire ? {beats_linear})\n"
         f"  modèle bat zero    sur {maj_zero}/{n_tk} tickers\n"
         f"  modèle bat linéaire sur {maj_lin}/{n_tk} tickers\n"
         f"  --> VERDICT : {verdict}\n"
@@ -157,9 +175,13 @@ def go_no_go(res: pd.DataFrame, model_name: str) -> str:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/phase0.yaml")
+    ap.add_argument("--raw-dir", default=None,
+                    help="remplace data.raw_dir du config (ex. data/raw/synthetic)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if args.raw_dir:
+        cfg["data"]["raw_dir"] = args.raw_dir
     res, meta = run_phase0(cfg)
     model_name = cfg["model"]["name"]
 

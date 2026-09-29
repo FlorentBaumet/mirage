@@ -21,9 +21,10 @@ from sklearn.exceptions import ConvergenceWarning
 from .data.bars import to_clock_bars
 from .data.lobster import load_sample
 from .eval import instrument_paths, load_config
+from .metrics import r2_per_dim
 from .splits import walk_forward_splits
 from .state import RET_IDX, STATE_COLS, build_state
-from .wm import LinearWM, MeanWM, MLPWM, PersistenceWM, make_model, make_supervised, rollout
+from .wm import make_supervised, make_wm_suite, rollout
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 matplotlib_ok = True
@@ -44,11 +45,30 @@ def _prep(cfg, inst):
     return make_supervised(S.values, int(cfg["state"]["lookback"]))
 
 
-def _r2_cols(Y, pred, base):
-    """R²_OOS par colonne vs `base` (persistence)."""
-    sse_m = np.sum((Y - pred) ** 2, axis=0)
-    sse_b = np.sum((Y - base) ** 2, axis=0)
-    return 1.0 - sse_m / np.where(sse_b == 0, np.nan, sse_b)
+def subsample_starts(starts: np.ndarray, max_starts: int) -> np.ndarray:
+    """Réduit régulièrement le nombre de points de départ d'un rollout.
+
+    Échantillonnage régulier (et non aléatoire) pour que le rollout reste
+    déterministe et reproductible.
+    """
+    starts = np.asarray(starts)
+    if len(starts) > max_starts:
+        starts = starts[np.linspace(0, len(starts) - 1, max_starts).astype(int)]
+    return starts
+
+
+def rollout_r2(actual_cum: np.ndarray, pred_cum: np.ndarray, horizons) -> dict:
+    """R²_OOS du rendement cumulé vs random walk, pour chaque horizon.
+
+    La baseline « random walk » est une prévision nulle : SSE(baseline) = somme
+    des rendements cumulés observés au carré.
+    """
+    out = {}
+    for h in horizons:
+        ac, pc = actual_cum[:, h - 1], pred_cum[:, h - 1]
+        sse_b = np.sum(ac ** 2)
+        out[h] = np.nan if sse_b == 0 else 1.0 - np.sum((ac - pc) ** 2) / sse_b
+    return out
 
 
 def run(cfg):
@@ -68,13 +88,7 @@ def run(cfg):
                 len(X), sp["n_folds"], embargo, sp["min_train_frac"], sp["scheme"])):
             Xtr, Xte, Ytr, Yte = X[tr], X[te], Y[tr], Y[te]
 
-            models = {
-                "persistence": PersistenceWM().fit(Xtr, Ytr),
-                "mean": MeanWM().fit(Xtr, Ytr),
-                "linear": LinearWM().fit(Xtr, Ytr),
-            }
-            if model_name not in models:
-                models[model_name] = make_model(model_name, cfg["model"]).fit(Xtr, Ytr)
+            models = make_wm_suite(Xtr, Ytr, model_name, cfg["model"])
 
             # --- 1-step, par dimension, vs baseline naïve appropriée ---
             # ret = un CHANGEMENT -> baseline = 0 (random walk), comme Phase 0.
@@ -82,17 +96,15 @@ def run(cfg):
             base = Xte[:, -d:].copy()
             base[:, RET_IDX] = 0.0
             for name in ("mean", "linear", model_name):
-                r2 = _r2_cols(Yte, models[name].predict(Xte), base)
+                r2 = r2_per_dim(Yte, models[name].predict(Xte), base)
                 for c, dim in enumerate(STATE_COLS):
                     rows1.append(dict(ticker=tk, fold=fi, model=name, dim=dim, r2_oos=r2[c]))
 
             # --- rollout, rendement cumulé, vs random walk ---
             a, b = int(te[0]), int(te[-1]) + 1
-            starts = np.arange(a, b - maxH)
+            starts = subsample_starts(np.arange(a, b - maxH), max_starts)
             if len(starts) == 0:
                 continue
-            if len(starts) > max_starts:
-                starts = starts[np.linspace(0, len(starts) - 1, max_starts).astype(int)]
             windows = X[starts].reshape(-1, lookback, d)
             hidx = starts[:, None] + np.arange(maxH)[None, :]
             actual_cum = np.cumsum(Y[hidx, RET_IDX], axis=1)  # (m, maxH)
@@ -100,10 +112,7 @@ def run(cfg):
             for name in ("persistence", "linear", model_name):
                 preds = rollout(models[name], windows, maxH)
                 pred_cum = np.cumsum(preds[:, :, RET_IDX], axis=1)
-                for h in horizons:
-                    ac, pc = actual_cum[:, h - 1], pred_cum[:, h - 1]
-                    sse_b = np.sum(ac ** 2)
-                    r2 = np.nan if sse_b == 0 else 1.0 - np.sum((ac - pc) ** 2) / sse_b
+                for h, r2 in rollout_r2(actual_cum, pred_cum, horizons).items():
                     rowsR.append(dict(ticker=tk, fold=fi, model=name, horizon=h, r2_oos_cumret=r2))
 
     return pd.DataFrame(rows1), pd.DataFrame(rowsR)
@@ -129,7 +138,8 @@ def main():
     res1.to_csv(os.path.join(args.out, "phase1_1step.csv"), index=False)
 
     print("\n=== Rollout : R²_OOS du rendement cumulé vs random walk (pooled) ===")
-    pivR = resR.pivot_table(index="horizon", columns="model", values="r2_oos_cumret", aggfunc="mean")
+    pivR = resR.pivot_table(index="horizon", columns="model",
+                            values="r2_oos_cumret", aggfunc="mean")
     print(pivR.round(5).to_string())
     resR.to_csv(os.path.join(args.out, "phase1_rollout.csv"), index=False)
 

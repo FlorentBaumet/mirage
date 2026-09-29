@@ -18,9 +18,8 @@ from sklearn.exceptions import ConvergenceWarning
 
 from .crypto_features import build_features
 from .data.crypto import load_symbol
-from .eval import load_config, standardize
+from .eval import load_config, walk_forward_predictions
 from .metrics import directional_accuracy, mae, r2_oos, rmse
-from .models import make_estimators
 from .splits import walk_forward_splits
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
@@ -51,25 +50,12 @@ def run(cfg):
         bars = load_symbol(sym, cfg["data"]["interval"], cfg["data"]["raw_dir"])
         X, y, persist = build_features(bars, tuple(cfg["features"]["lags"]),
                                        vol_window, horizon)
-        n = len(X)
-        folds = list(walk_forward_splits(n, sp["n_folds"], embargo,
+        folds = list(walk_forward_splits(len(X), sp["n_folds"], embargo,
                                          sp["min_train_frac"], sp["scheme"]))
-        meta.append(dict(symbol=sym, bars=n, folds=len(folds),
+        meta.append(dict(symbol=sym, bars=len(X), folds=len(folds),
                          span=f"{X.index[0].date()}..{X.index[-1].date()}"))
-        for fi, (tr, te) in enumerate(folds):
-            Xtr, Xte = X.iloc[tr], X.iloc[te]
-            ytr, yte = y.iloc[tr].to_numpy(), y.iloc[te].to_numpy()
-            if sp.get("standardize", True):
-                Xtr, Xte = standardize(Xtr, Xte)
-            Xtr_a, Xte_a = Xtr.to_numpy(), Xte.to_numpy()
-
-            est, _ = make_estimators(cfg["model"], cfg["baselines"])
-            for name, model in est.items():
-                model.fit(Xtr_a, ytr)
-                rows.append(_score(sym, fi, name, yte, model.predict(Xte_a)))
-            if "persistence" in cfg["baselines"]:
-                rows.append(_score(sym, fi, "persistence", yte,
-                                   persist.iloc[te].to_numpy()))
+        for fi, name, yte, pred in walk_forward_predictions(X, y, persist, cfg, embargo):
+            rows.append(_score(sym, fi, name, yte, pred))
     return pd.DataFrame(rows), pd.DataFrame(meta)
 
 
