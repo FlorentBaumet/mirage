@@ -11,9 +11,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from mirage.eval import standardize
 from mirage.features import build_features
 from mirage.splits import walk_forward_splits
-from mirage.eval import standardize
 
 
 def _toy_bars(n=30, seed=0):
@@ -81,6 +81,7 @@ def test_shuffle_destroys_or_not_signal():
     """Sanity : sur des features aléatoires non liées à la cible, le R²_OOS d'un
     linéaire reste <= 0 (pas de signal fabriqué)."""
     from sklearn.linear_model import Ridge
+
     from mirage.metrics import r2_oos
 
     rng = np.random.default_rng(0)

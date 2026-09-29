@@ -17,8 +17,9 @@ def test_snapshot_delta_and_emit(tmp_path):
     bids = [["100.0", "4"], ["99.9", "2"], ["99.8", "1"], ["99.7", "1"], ["99.6", "1"]]
     lines = [
         {"type": "snapshot", "ts": 1000, "data": {"s": "X", "a": asks, "b": bids}},
-        {"type": "delta", "ts": 1500, "data": {"s": "X", "a": [["100.1", "0"]], "b": []}},  # vide le best ask
-        {"type": "delta", "ts": 2000, "data": {"s": "X", "a": [], "b": []}},                # change de seconde -> émet sec 1
+        # le best ask est vidé, puis on change de seconde -> la seconde 1 est émise
+        {"type": "delta", "ts": 1500, "data": {"s": "X", "a": [["100.1", "0"]], "b": []}},
+        {"type": "delta", "ts": 2000, "data": {"s": "X", "a": [], "b": []}},
     ]
     zf = tmp_path / "2025-01-01_X_ob500.data.zip"
     _write_zip(zf, lines)

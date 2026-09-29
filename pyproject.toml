@@ -5,8 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mirage"
 version = "0.0.1"
-description = "MIRAGE — world model de marche (LOB/prix) + evaluation honnete"
+description = "MIRAGE — world model de marché (carnet/prix) et évaluation honnête out-of-sample"
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Florent Baumet" }]
 dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
@@ -16,8 +18,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-torch = ["torch>=2.1"]       # uniquement pour le world model GRU (Phase 0 marche sans)
-dev = ["pytest>=7.4", "wandb>=0.16", "nbconvert>=7.0", "ipykernel>=6.0"]
+torch = ["torch>=2.1"]       # uniquement pour le world model GRU (le reste tourne sans)
+dev = ["pytest>=7.4", "ruff>=0.6", "wandb>=0.16", "nbconvert>=7.0", "ipykernel>=6.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# matplotlib.use("Agg") doit obligatoirement précéder l'import de pyplot
+"scripts/**/*.py" = ["E402"]
+"src/mirage/wm_eval.py" = ["E402"]
+"src/mirage/crypto_eval.py" = ["E402"]

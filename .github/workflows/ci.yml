@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Installer le paquet
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check src scripts tests
+
+      # Les tests ne dépendent d'aucune donnée : data/raw/ est gitignored, et
+      # chaque test fabrique ses propres entrées (tmp_path, carnets jouets).
+      - name: Tests
+        run: pytest -q
