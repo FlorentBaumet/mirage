@@ -1,0 +1,134 @@
+# Pré-enregistrement — Phase 1 crypto (carnet Bybit L2), jeu élargi
+#
+# FIGÉ le 2026-09-29 et COMMITÉ AVANT toute exécution de l'évaluation sur le jeu
+# élargi. Rien ici ne se modifie après avoir vu un résultat (invariant I3). Toute
+# déviation doit apparaître dans le rapport comme déviation, pas être absorbée.
+#
+# Motif : le résultat phare (R²_OOS(ret) ≈ +0.067, net négatif dès 2 bp) ne reposait
+# que sur 6 jours × 3 symboles. La sonde HEAD du 2026-09-29 a montré que l'archive
+# Bybit couvre en réalité 2023-01-18 → 2025-08-20 (947 jours, aucun trou interne),
+# et non les ~3 mois documentés. On consolide sur le jeu élargi.
+
+meta:
+  nom: phase1_crypto_elargi
+  fige_le: "2026-09-29"
+  jeu_precedent: "6 dates x 3 symboles (mai→août 2025) — inclus strictement ci-dessous"
+
+donnees:
+  source: "Bybit L2, quote-saver.bycsi.com/orderbook/linear, dumps ob500 (500 niveaux)"
+  symboles: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT]
+  dates:
+    - "2023-01-20"
+    - "2023-02-11"
+    - "2023-03-06"
+    - "2023-03-28"
+    - "2023-04-20"
+    - "2023-05-12"
+    - "2023-06-04"
+    - "2023-06-26"
+    - "2023-07-19"
+    - "2023-08-10"
+    - "2023-09-02"
+    - "2023-09-24"
+    - "2023-10-17"
+    - "2023-11-08"
+    - "2023-11-30"
+    - "2023-12-23"
+    - "2024-01-14"
+    - "2024-02-06"
+    - "2024-02-28"
+    - "2024-03-22"
+    - "2024-04-13"
+    - "2024-05-06"
+    - "2024-05-28"
+    - "2024-06-20"
+    - "2024-07-12"
+    - "2024-08-03"
+    - "2024-08-26"
+    - "2024-09-17"
+    - "2024-10-10"
+    - "2024-11-01"
+    - "2024-11-24"
+    - "2024-12-16"
+    - "2025-01-08"
+    - "2025-01-30"
+    - "2025-02-22"
+    - "2025-03-16"
+    - "2025-04-08"
+    - "2025-04-30"
+    - "2025-05-08"
+    - "2025-05-22"
+    - "2025-06-02"
+    - "2025-06-18"
+    - "2025-07-09"
+    - "2025-08-06"
+  barres: "1 s, top-10 niveaux, format LOBSTER ; état et fenêtres construits PAR JOUR"
+
+# Rien ne change dans le modèle : c'est le jeu de données qui s'élargit, pas la méthode.
+# Si on touchait ici, le résultat élargi ne serait plus comparable au publié.
+modele:
+  classe: LinearWM            # idem jeu publié ; MLP rapporté à titre indicatif seulement
+  lookback: 16                # secondes
+  n_folds: 5
+  min_train_frac: 0.4
+  scheme: expanding
+  embargo: "max(10, lookback) = 16 échantillons"
+  cible: "rendement du mid à +1 s (RET_IDX)"
+  baseline: "0 pour ret (random walk), no-change pour les niveaux"
+  metrique_principale: "r2_oos"
+
+# Le protocole de décision est figé ici, avant de voir les chiffres.
+evaluation:
+  frais_bp: [0.0, 2.0, 5.5]   # 0 = borne optimiste, 2 = réaliste, 5.5 = taker Bybit
+  cout: "demi-spread réel mesuré à la barre de décision + frais, payé au changement de position"
+  position: "signe de la prédiction linéaire OOS"
+  remise_a_plat: "à chaque frontière de jour (aucun faux retournement à minuit)"
+  bootstrap:
+    unite: "jour"                     # les blocs SONT les journées
+    n_boot: 2000
+    seed: 0
+    type: "circulaire, rééchantillonnage des jours avec remise"
+    variante_robustesse:              # pré-enregistrée pour ne pas la choisir après coup
+      longueur_bloc_jours: 3          # respecte l'autocorrélation inter-jours (régimes)
+    stats:
+      - "r2_oos(ret) par symbole"
+      - "net_bp par symbole et par niveau de frais"
+      - "gross_bp par symbole"
+
+# Règles de décision. Écrites AVANT les résultats pour qu'aucune lecture ne soit
+# choisie après coup parmi plusieurs.
+regles:
+  signal:
+    enonce: >
+      Le signal est déclaré RÉEL ssi l'IC95 de r2_oos(ret) exclut 0 pour au moins
+      4 des 5 symboles.
+  mirage:
+    enonce: >
+      Le mirage net de coûts est déclaré CONFIRMÉ ssi, pour CHAQUE symbole, l'IC95
+      de net_bp à 2 bp est entièrement strictement négatif.
+  exploitable:
+    enonce: >
+      Un symbole est déclaré EXPLOITABLE ssi la borne basse de l'IC95 de net_bp à
+      2 bp est strictement positive. Toute autre lecture (borne haute > 0, net
+      moyen > 0) est rapportée mais ne vaut PAS verdict.
+  zero_frais:
+    enonce: >
+      Le cas 0 bp est rapporté comme borne optimiste (frais nuls irréalistes), jamais
+      comme un edge. Le cas SOL du jeu publié (net ≈ 0 à 0 bp, tué par le spread seul)
+      est le test décisif de cette distinction.
+  resultat_negatif:
+    enonce: >
+      Un résultat négatif bien démontré est un résultat valide. Si le jeu élargi
+      affaiblit ou détruit le résultat phare, il est publié tel quel.
+
+rapport:
+  sortie: "reports/PHASE1_CRYPTO.md (+ README)"
+  doit_contenir:
+    - "couverture réelle (symboles x jours, dates)"
+    - "R²_OOS 1-step par dimension et par modèle (5 folds moyennés)"
+    - "R²_OOS(ret) par symbole ET par fold ET distribution par jour (médiane, IQR, fraction > 0)"
+    - "IC95 block bootstrap par jour : r2_oos(ret) et net_bp à 0 / 2 / 5.5 bp"
+    - "tableau économique complet : gross, turnover, net par symbole et par frais"
+    - "spread moyen par symbole, et comparaison 2023 vs 2024 vs 2025 (régime)"
+    - "rollout du rendement cumulé par horizon"
+    - "tous les chiffres, sans sélection ; limites explicites"

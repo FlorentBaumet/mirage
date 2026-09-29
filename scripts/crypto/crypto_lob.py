@@ -126,7 +126,10 @@ def economic_check(sym, X, Y, days, spread, fees_bp=(0.0, 2.0, 5.5)):
                          turnover=round(float(dpos.mean()) / 2, 3),
                          net_bp=round(float(net.mean()) * 1e4, 4),
                          net_cumul_pct=round(float(net.sum()) * 100, 2)))
-    return pd.DataFrame(rows), dict(gross=gross, dpos=dpos, half=half)
+    # y / pred / day sont conservés pour que le bootstrap par jour (bootstrap_signif.py)
+    # réutilise EXACTEMENT ces prédictions OOS au lieu de refaire le walk-forward à sa façon.
+    return pd.DataFrame(rows), dict(gross=gross, dpos=dpos, half=half,
+                                    y=y, pred=pred, day=dd)
 
 
 def main():
@@ -155,6 +158,9 @@ def main():
         e, det = economic_check(sym, X, Y, days, spread)
         econ_rows.append(e)
         detail[sym] = det
+        np.savez_compressed(os.path.join(args.out, f"crypto_lob_oos_{sym}.npz"),
+                            y=det["y"], pred=det["pred"], gross=det["gross"],
+                            dpos=det["dpos"], half=det["half"], day=det["day"])
         del X, Y
 
     res1, resR = pd.DataFrame(all1), pd.DataFrame(allR)
@@ -251,6 +257,7 @@ def main():
     fig.savefig(os.path.join(args.out, "crypto_lob_mirage.png"), dpi=130)
     plt.close(fig)
 
+    print(f"\nPrédictions OOS par symbole : {args.out}/crypto_lob_oos_<SYM>.npz")
     print(f"\nFigures + CSV dans {args.out}/")
 
 
