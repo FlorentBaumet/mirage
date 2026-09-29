@@ -18,21 +18,21 @@ import os
 import re
 import warnings
 
+import matplotlib
 import numpy as np
 import pandas as pd
 from sklearn.exceptions import ConvergenceWarning
 
-import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from mirage.backtest import intraday_starts, position_changes  # noqa: E402
 from mirage.impact import cost_curve  # noqa: E402
+from mirage.metrics import r2_per_dim  # noqa: E402
 from mirage.splits import walk_forward_splits  # noqa: E402
 from mirage.state import RET_IDX, STATE_COLS, build_state  # noqa: E402
-from mirage.wm import (LinearWM, MeanWM, MLPWM, PersistenceWM,  # noqa: E402
-                       make_supervised, rollout)
-from mirage.wm_eval import _r2_cols  # noqa: E402
+from mirage.wm import LinearWM, make_supervised, make_wm_suite, rollout  # noqa: E402
+from mirage.wm_eval import rollout_r2, subsample_starts  # noqa: E402
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
@@ -77,21 +77,17 @@ def phase1a(sym, X, Y, days, d):
     for fi, (tr, te) in enumerate(walk_forward_splits(len(X), NFOLDS, embargo,
                                                       MINTRAIN, "expanding")):
         Xtr, Xte, Ytr, Yte = X[tr], X[te], Y[tr], Y[te]
-        models = {"persistence": PersistenceWM().fit(Xtr, Ytr),
-                  "mean": MeanWM().fit(Xtr, Ytr),
-                  "linear": LinearWM().fit(Xtr, Ytr),
-                  "mlp": MLPWM().fit(Xtr, Ytr)}
+        models = make_wm_suite(Xtr, Ytr, "mlp")
         base = Xte[:, -d:].copy()
         base[:, RET_IDX] = 0.0                     # ret : baseline = random walk
         for name in ("mean", "linear", "mlp"):
-            r2 = _r2_cols(Yte, models[name].predict(Xte), base)
+            r2 = r2_per_dim(Yte, models[name].predict(Xte), base)
             for c, dim in enumerate(STATE_COLS):
                 rows1.append(dict(symbol=sym, fold=fi, model=name, dim=dim, r2=r2[c]))
 
         a, b = int(te[0]), int(te[-1]) + 1
-        starts = intraday_starts(np.arange(a, b - MAXH), days, MAXH)   # rollout intra-jour
-        if len(starts) > MAXSTARTS:
-            starts = starts[np.linspace(0, len(starts) - 1, MAXSTARTS).astype(int)]
+        # rollout intra-jour uniquement (aucune fenêtre à cheval sur la nuit)
+        starts = subsample_starts(intraday_starts(np.arange(a, b - MAXH), days, MAXH), MAXSTARTS)
         if len(starts) == 0:
             continue
         win = X[starts].reshape(-1, LOOKBACK, d)
@@ -99,9 +95,7 @@ def phase1a(sym, X, Y, days, d):
         ac = np.cumsum(Y[hidx, RET_IDX], axis=1)
         for name in ("persistence", "linear", "mlp"):
             pc = np.cumsum(rollout(models[name], win, MAXH)[:, :, RET_IDX], axis=1)
-            for h in HORIZONS:
-                sse_b = np.sum(ac[:, h - 1] ** 2)
-                r2 = np.nan if sse_b == 0 else 1 - np.sum((ac[:, h - 1] - pc[:, h - 1]) ** 2) / sse_b
+            for h, r2 in rollout_r2(ac, pc, HORIZONS).items():
                 rowsR.append(dict(symbol=sym, fold=fi, model=name, horizon=h, r2=r2))
     return rows1, rowsR
 
@@ -166,7 +160,8 @@ def main():
     res1, resR = pd.DataFrame(all1), pd.DataFrame(allR)
     pd.set_option("display.width", 160)
 
-    print("\n=== Phase 1a — R²_OOS 1-step par dimension (baseline: 0 pour ret, no-change sinon) ===")
+    print("\n=== Phase 1a — R²_OOS 1-step par dimension "
+          "(baseline: 0 pour ret, no-change sinon) ===")
     print(res1.pivot_table(index="dim", columns="model", values="r2", aggfunc="mean")
           .reindex(STATE_COLS).round(5).to_string())
     print("\n--- 'ret' par symbole ---")
@@ -201,8 +196,11 @@ def main():
     ax.set_xlabel("taille (k × meilleur niveau)")
     ax.set_ylabel("slippage moyen (bp)")
     ax.set_title("Crypto (Bybit L2) — coût d'exécution vs taille")
-    ax.legend(); ax.grid(alpha=0.3); fig.tight_layout()
-    fig.savefig(os.path.join(args.out, "crypto_lob_cost.png"), dpi=130); plt.close(fig)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.out, "crypto_lob_cost.png"), dpi=130)
+    plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4.5))
     for m in pivR.columns:
@@ -211,10 +209,14 @@ def main():
     learned = [m for m in pivR.columns if m != "persistence"]
     ax.set_ylim(float(pivR[learned].min().min()) * 1.4 - 0.02,
                 max(0.05, float(pivR[learned].max().max()) * 1.2))
-    ax.set_xlabel("horizon de rollout (s)"); ax.set_ylabel("R²_OOS rendement cumulé")
+    ax.set_xlabel("horizon de rollout (s)")
+    ax.set_ylabel("R²_OOS rendement cumulé")
     ax.set_title("Crypto (Bybit L2) — world model d'état, rollout vs random walk")
-    ax.legend(); ax.grid(alpha=0.3); fig.tight_layout()
-    fig.savefig(os.path.join(args.out, "crypto_lob_rollout.png"), dpi=130); plt.close(fig)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.out, "crypto_lob_rollout.png"), dpi=130)
+    plt.close(fig)
 
     # stabilité temporelle du signal : R²_OOS(ret) du linéaire par fold
     fig, ax = plt.subplots(figsize=(7, 4.5))
@@ -226,8 +228,11 @@ def main():
     ax.set_xlabel("fold walk-forward (≈ temps, inter-jours)")
     ax.set_ylabel("R²_OOS du rendement (linéaire)")
     ax.set_title("Stabilité du signal carnet dans le temps")
-    ax.legend(); ax.grid(alpha=0.3); fig.tight_layout()
-    fig.savefig(os.path.join(args.out, "crypto_lob_stability.png"), dpi=130); plt.close(fig)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.out, "crypto_lob_stability.png"), dpi=130)
+    plt.close(fig)
 
     sym0 = next(iter(detail))
     det = detail[sym0]
@@ -237,10 +242,14 @@ def main():
         net = det["gross"] - det["dpos"] * (det["half"] + fee * 1e-4)
         ax.plot(np.cumsum(net) * 100, label=lbl)
     ax.axhline(0, color="grey", ls="--", lw=1)
-    ax.set_xlabel("barres de test (1 s, multi-jours)"); ax.set_ylabel("PnL cumulé (%)")
+    ax.set_xlabel("barres de test (1 s, multi-jours)")
+    ax.set_ylabel("PnL cumulé (%)")
     ax.set_title(f"Crypto {sym0} — un edge réel qui est un mirage net de frais")
-    ax.legend(); ax.grid(alpha=0.3); fig.tight_layout()
-    fig.savefig(os.path.join(args.out, "crypto_lob_mirage.png"), dpi=130); plt.close(fig)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.out, "crypto_lob_mirage.png"), dpi=130)
+    plt.close(fig)
 
     print(f"\nFigures + CSV dans {args.out}/")
 
