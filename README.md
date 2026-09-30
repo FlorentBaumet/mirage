@@ -40,7 +40,7 @@ structurel. Détail, limites et chiffres complets :
 
 | Phase | Données | Question | Verdict |
 |---|---|---|---|
-| [**0**](reports/PHASE0.md) - LOBSTER | 5 actions, 1 journée 2012, barres 1 s | Le rendement du mid est-il prédictible ? | **NO-GO** : R²_OOS ≤ 0 de 1 à 60 s. Le *signe* est prédictible sur les large-tick (82–83 % à 1 s) mais pour un gain 20–50× plus petit que le demi-spread. |
+| [**0**](reports/PHASE0.md) - LOBSTER | 5 actions, 1 journée 2012, barres 1 s | Le rendement du mid est-il prédictible ? | **NO-GO** : R²_OOS ≤ 0 de 1 à 60 s. Le *signe* est prédictible sur les large-tick (80–83 % à 1 s) mais pour un gain des dizaines de fois plus petit que le demi-spread. |
 | [**0 (crypto)**](reports/PHASE0_CRYPTO.md) | 4 cryptos, 1 an de klines 1 min | La question tient-elle sur des mois ? | Random walk (R²_OOS ≤ 0 sur 4 coins × 6 périodes, dir ≈ 50 %). Le signal sous-seconde a disparu à 1 min. |
 | [**1a**](reports/PHASE1.md) | LOBSTER | Prédire le *vecteur d'état* du carnet plutôt qu'un scalaire | Le prix reste un random walk ; la forme du carnet (spread, imbalances, micro-price) est légèrement prévisible linéairement (R²_OOS 0.02–0.09). |
 | [**1b**](reports/PHASE1B.md) | LOBSTER | Action-conditionner le world model (impact de ses propres ordres) | Le plus petit ordre coûte déjà **1.7–3 bp** contre un edge prédictible **≤ 0.1 bp**. Mirage confirmé côté exécution. |
