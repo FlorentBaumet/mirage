@@ -1,0 +1,2 @@
+# Le notebook embarque ses figures (base64) : il ne doit pas compter comme du code
+*.ipynb linguist-documentation
