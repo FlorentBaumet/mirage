@@ -35,7 +35,10 @@ def _levels(o: dict):
     """Extrait (type, ts_ms, bids, asks) en tolérant quelques variantes de schéma."""
     d = o.get("data", o)
     typ = o.get("type") or d.get("type") or "delta"
-    ts = int(o.get("ts") or d.get("ts"))
+    ts = o.get("ts")
+    if ts is None:
+        ts = d.get("ts")
+    ts = int(ts)  # `ts = 0` est une valeur legitime : le piege du `or` est evite
     b = d.get("b", d.get("bids", []))
     a = d.get("a", d.get("asks", []))
     return typ, ts, b, a
