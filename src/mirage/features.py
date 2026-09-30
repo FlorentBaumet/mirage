@@ -18,15 +18,25 @@ EPS = 1e-12
 
 
 def _ofi_best_level(b: pd.DataFrame) -> pd.Series:
-    """Order-Flow Imbalance au meilleur niveau (Cont et al.), causal (t et t-1)."""
+    """Order-Flow Imbalance au meilleur niveau (Cont, Kukanov & Stoikov), causal.
+
+    e_n = 1{P^b_n >= P^b_{n-1}} q^b_n - 1{P^b_n <= P^b_{n-1}} q^b_{n-1}
+        - 1{P^a_n <= P^a_{n-1}} q^a_n + 1{P^a_n >= P^a_{n-1}} q^a_{n-1}
+
+    Les deux cotes sont ADDITIONNES (le signe de chaque contribution est dans
+    l'expression). La version precedente soustrayait le cote ask, ce qui n'etait
+    correct que lorsque le prix ask ne bougeait pas - asymetrie silencieuse, car un
+    OFI partiellement inverse reste informatif et ne se voit pas dans un score
+    global. Non-regression : tests/test_ofi_causal.py.
+    """
     bp, bs = b["bid_price_1"], b["bid_size_1"]
     ap, asz = b["ask_price_1"], b["ask_size_1"]
     bp1, bs1 = bp.shift(1), bs.shift(1)
     ap1, as1 = ap.shift(1), asz.shift(1)
 
     e_b = np.where(bp > bp1, bs, np.where(bp == bp1, bs - bs1, -bs1))
-    e_a = np.where(ap < ap1, -asz, np.where(ap == ap1, asz - as1, as1))
-    return pd.Series(e_b - e_a, index=b.index)
+    e_a = np.where(ap < ap1, -asz, np.where(ap == ap1, as1 - asz, as1))
+    return pd.Series(e_b + e_a, index=b.index)
 
 
 def build_features(

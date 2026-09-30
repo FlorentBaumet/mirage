@@ -14,8 +14,9 @@ avec (P^b, q^b) le meilleur bid et (P^a, q^a) le meilleur ask :
 
     OFI(seconde t) = somme des e_n des evenements dont l'horodatage tombe dans t.
 
-C'est la meme convention que `mirage.features._ofi_best_level` (version LOBSTER, sur
-barres) : la forme a trois cas y est equivalente au cas par cas ci-dessus.
+La meme formule est implementee pour LOBSTER dans `mirage.features._ofi_best_level`.
+ATTENTION : cette derniere etait erronee des que le prix ask bougeait (voir le test de
+non-regression dans tests/test_ofi_causal.py) ; elle est corrigee en meme temps.
 
 CAUSALITE : OFI(t) ne depend que des evenements de la seconde t. Aucun evenement
 posterieur n'entre dans la serie - la propriete est verifiee par
@@ -49,20 +50,26 @@ def _best_ask(book: dict[float, float], cur, lo_added):
 
 
 def _contribution(pb, qb, nb, nq, is_bid: bool) -> float:
-    """e_n pour un cote, en convention features.py. 0 si l'un des etats est indefini."""
+    """Contribution SIGNEE d'un cote a e_n (Cont et al.). 0 si un etat est indefini.
+
+    ATTENTION : ce n'est PAS la convention de `mirage.features._ofi_best_level`, qui
+    est erronee des que le prix ask bouge (cf. le test de non-regression dans
+    tests/test_ofi_causal.py). Ici on applique la formule de Cont telle quelle, et le
+    site d'appel ADDITIONNE les deux cotes.
+    """
     if pb is None or nb is None:
         return 0.0
     if is_bid:
-        if nb > pb:
+        if nb > pb:            # le bid monte   -> achat agressif
             return nq
         if nb == pb:
             return nq - qb
-        return -qb
-    if nb < pb:
+        return -qb             # le bid descend -> retrait
+    if nb < pb:                # l'ask descend  -> vente agressive
         return -nq
     if nb == pb:
-        return nq - qb
-    return qb
+        return qb - nq
+    return qb                  # l'ask monte    -> retrait
 
 
 def load_ofi(data_zip: str, freq_s: int = 1) -> pd.Series:
@@ -110,7 +117,7 @@ def load_ofi(data_zip: str, freq_s: int = 1) -> pd.Series:
         # des evenements, qui portent sur des niveaux profonds.
         if typ != "snapshot" and (nbp, nbq, nap, naq) != (bp, bq, ap, aq):
             e = (_contribution(bp, bq, nbp, nbq, True)
-                 - _contribution(ap, aq, nap, naq, False))
+                 + _contribution(ap, aq, nap, naq, False))
             acc[bucket] = acc.get(bucket, 0.0) + e
 
         bp, bq, ap, aq = nbp, nbq, nap, naq
