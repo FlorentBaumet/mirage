@@ -18,10 +18,17 @@ import pandas as pd
 EPS = 1e-12
 STATE_COLS = ["ret", "spread_rel", "imb1", "depth_imb", "micro_dev"]
 RET_IDX = 0  # position de 'ret' dans STATE_COLS (utilisé pour le rollout du prix)
+OFI_COL = "ofi"
 
 
-def build_state(bars: pd.DataFrame, levels: int = 10):
-    """Renvoie (S, mid) : S = DataFrame des états (STATE_COLS), mid aligné."""
+def build_state(bars: pd.DataFrame, levels: int = 10, ofi: pd.Series | None = None):
+    """Renvoie (S, mid) : S = DataFrame des états, mid aligné.
+
+    Si `ofi` (Series alignée sur l'index des barres) est fournie, elle est AJOUTÉE EN
+    DERNIÈRE POSITION. Conséquence voulue : RET_IDX reste 0 et les cinq premières
+    dimensions gardent leur sens exact, donc tout l'aval (export .npz, bootstrap,
+    position = signe de la prédiction de ret) est inchangé.
+    """
     a1, b1 = bars["ask_price_1"], bars["bid_price_1"]
     mid = (a1 + b1) / 2.0
     mlog = np.log(mid)
@@ -37,5 +44,13 @@ def build_state(bars: pd.DataFrame, levels: int = 10):
     S["depth_imb"] = (bid_depth - ask_depth) / (bid_depth + ask_depth + EPS)
     S["micro_dev"] = (micro - mid) / mid
 
-    S = S[STATE_COLS].dropna()
+    cols = STATE_COLS
+    if ofi is not None:
+        # Une seconde sans evenement touchant le meilleur niveau a un flux NUL, pas une
+        # donnee manquante : fillna(0) conserve l'echantillon, donc la comparabilite
+        # exacte avec le bras de base (meme nombre de lignes, memes cibles).
+        S[OFI_COL] = ofi.reindex(S.index).fillna(0.0).to_numpy()
+        cols = STATE_COLS + [OFI_COL]
+
+    S = S[cols].dropna()
     return S, mid.loc[S.index]

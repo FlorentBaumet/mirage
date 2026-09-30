@@ -142,3 +142,60 @@ def test_index_alignable_sur_les_barres(tmp_path):
     assert isinstance(s.index, pd.DatetimeIndex)
     assert (s.index.microsecond == 0).all()
     assert (s.index.nanosecond == 0).all()
+
+
+# --- Branchement dans le vecteur d'etat --------------------------------------
+#
+# L'enrichissement doit etre STRICTEMENT ADDITIF. C'est une exigence
+# d'interpretation, pas d'esthetique : si ajouter l'OFI deplacait les cinq
+# premieres dimensions, le comparatif base/enrichi mesurerait deux changements a
+# la fois et ne serait plus attribuable a l'OFI.
+
+NIVEAUX = 10
+
+
+def _barres(n=6):
+    idx = pd.date_range("2024-01-01", periods=n, freq="s")
+    b = {"bid_price_1": [], "bid_size_1": [], "ask_price_1": [], "ask_size_1": []}
+    for i in range(n):
+        b["bid_price_1"].append(100.0 + 0.1 * i)
+        b["bid_size_1"].append(1.0 + i)
+        b["ask_price_1"].append(101.0 + 0.1 * i)
+        b["ask_size_1"].append(2.0 + i)
+    bars = pd.DataFrame(b, index=idx)
+    for lvl in range(2, NIVEAUX + 1):
+        bars[f"bid_size_{lvl}"] = 1.0
+        bars[f"ask_size_{lvl}"] = 1.0
+    return bars
+
+
+def test_ofi_ajoutee_en_derniere_position():
+    from mirage.state import OFI_COL, RET_IDX, STATE_COLS, build_state
+
+    bars = _barres()
+    ofi = pd.Series(0.0, index=bars.index, name="ofi")
+    ofi.iloc[2] = 7.0
+
+    base, _ = build_state(bars)
+    enrichi, _ = build_state(bars, ofi=ofi)
+
+    assert list(enrichi.columns) == STATE_COLS + [OFI_COL]
+    assert RET_IDX == 0
+    pd.testing.assert_frame_equal(base, enrichi[STATE_COLS])   # echantillon identique
+    assert enrichi[OFI_COL].loc[bars.index[2]] == 7.0
+
+
+def test_seconde_sans_flux_vaut_zero_pas_manquant():
+    """Remplir a 0 ne doit pas retirer de ligne : le taux d'echantillonnage doit
+    rester identique entre les deux bras, sinon le comparatif est fausse."""
+    from mirage.state import build_state
+
+    bars = _barres()
+    creux = pd.Series([3.0, -2.0], index=bars.index[2:4])   # deux secondes couvertes
+
+    base, _ = build_state(bars)
+    enrichi, _ = build_state(bars, ofi=creux)
+
+    assert len(enrichi) == len(base)
+    assert (enrichi["ofi"] != 0.0).sum() == 2
+    assert enrichi["ofi"].loc[bars.index[2]] == 3.0

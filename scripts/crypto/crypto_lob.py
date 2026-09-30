@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import re
 import warnings
@@ -30,17 +31,23 @@ from mirage.backtest import intraday_starts, position_changes  # noqa: E402
 from mirage.impact import cost_curve  # noqa: E402
 from mirage.metrics import r2_per_dim  # noqa: E402
 from mirage.splits import walk_forward_splits  # noqa: E402
-from mirage.state import RET_IDX, STATE_COLS, build_state  # noqa: E402
+from mirage.state import OFI_COL, RET_IDX, STATE_COLS, build_state  # noqa: E402
 from mirage.wm import LinearWM, make_supervised, make_wm_suite, rollout  # noqa: E402
 from mirage.wm_eval import rollout_r2, subsample_starts  # noqa: E402
 
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 DIR = os.path.join("data", "raw", "crypto_lob")
+OFI_DIR = os.path.join("data", "raw", "crypto_ofi")
 LOOKBACK, NFOLDS, MINTRAIN = 16, 5, 0.4
 HORIZONS, MAXH, MAXSTARTS = [1, 2, 3, 5, 10, 20, 30], 30, 2000
 KS = [0.25, 0.5, 1, 2, 4, 8]
 SPREAD_IDX = STATE_COLS.index("spread_rel")
+
+
+def ofi_path_for(pf: str) -> str:
+    """Chemin du .pkl OFI evenementiel correspondant a une journee de barres."""
+    return os.path.join(OFI_DIR, os.path.basename(pf).replace("_1s_book.pkl", "_ofi.pkl"))
 
 
 def load_cached() -> dict[str, list[str]]:
@@ -52,14 +59,30 @@ def load_cached() -> dict[str, list[str]]:
     return {k: sorted(v) for k, v in out.items()}
 
 
-def build_symbol(pkls: list[str]):
-    """Construit les échantillons multi-jours d'un symbole (par jour, puis concaténés)."""
+def build_symbol(pkls: list[str], with_ofi: bool = False):
+    """Construit les échantillons multi-jours d'un symbole (par jour, puis concaténés).
+
+    `with_ofi` ajoute la dimension OFI en DERNIÈRE position. Le reste est inchangé, y
+    compris le nombre de lignes : le comparatif base/enrichi doit porter sur exactement
+    les mêmes échantillons, sinon les deux bras ne sont pas appariables.
+    """
     Xs, Ys, days, spr, costs = [], [], [], [], []
     d = None
     for di, pf in enumerate(pkls):
         bars = pd.read_pickle(pf)
+        ofi = None
+        if with_ofi:
+            op = ofi_path_for(pf)
+            if not os.path.exists(op):
+                # La couverture exigée est bloquante : un jour manquant avantagerait
+                # silencieusement les deux bras d'un échantillon différent.
+                raise SystemExit(
+                    f"OFI absent : {op}\nCouverture incomplete : lance d'abord "
+                    f"scripts/crypto/fetch_ofi.py (le pre-enregistrement interdit "
+                    f"d'abandonner silencieusement un couple symbole/date).")
+            ofi = pd.read_pickle(op)
         costs.append(cost_curve(bars, KS, side=1, levels=10))
-        S, _ = build_state(bars)
+        S, _ = build_state(bars, ofi=ofi)
         X, Y, pos, d = make_supervised(S.values, LOOKBACK)   # fenêtres internes au jour
         Xs.append(X)
         Ys.append(Y)
@@ -71,7 +94,7 @@ def build_symbol(pkls: list[str]):
             np.concatenate(spr), d, cost)
 
 
-def phase1a(sym, X, Y, days, d):
+def phase1a(sym, X, Y, days, d, dims=STATE_COLS):
     rows1, rowsR = [], []
     embargo = max(10, LOOKBACK)
     for fi, (tr, te) in enumerate(walk_forward_splits(len(X), NFOLDS, embargo,
@@ -82,7 +105,7 @@ def phase1a(sym, X, Y, days, d):
         base[:, RET_IDX] = 0.0                     # ret : baseline = random walk
         for name in ("mean", "linear", "mlp"):
             r2 = r2_per_dim(Yte, models[name].predict(Xte), base)
-            for c, dim in enumerate(STATE_COLS):
+            for c, dim in enumerate(dims):
                 rows1.append(dict(symbol=sym, fold=fi, model=name, dim=dim, r2=r2[c]))
 
         a, b = int(te[0]), int(te[-1]) + 1
@@ -135,8 +158,20 @@ def economic_check(sym, X, Y, days, spread, fees_bp=(0.0, 2.0, 5.5)):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="experiments")
+    ap.add_argument("--state", choices=("base", "ofi"), default="base",
+                    help="'ofi' ajoute l'order flow imbalance evenementiel en 6e dim. "
+                         "Ecrire dans un --out distinct : les .npz du bras de base sont "
+                         "ceux publies, et l'appariement les relit.")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
+
+    dims = list(STATE_COLS) + ([OFI_COL] if args.state == "ofi" else [])
+
+    if args.state == "ofi" and os.path.abspath(args.out) == os.path.abspath("experiments"):
+        # Les .npz de experiments/ sont ceux publies : l'appariement les relit comme bras
+        # de base. Les ecraser par le bras enrichi detruirait la comparaison.
+        raise SystemExit("--state ofi doit ecrire ailleurs que dans experiments/ "
+                         "(ex. --out experiments_ofi) : experiments/ est le bras de base.")
 
     cache = load_cached()
     if not cache:
@@ -148,11 +183,13 @@ def main():
         print(f"  {sym} : {len(pk)} jours  ({dates[0]} .. {dates[-1]})")
 
     all1, allR, econ_rows, detail, costs = [], [], [], {}, {}
+    n_ech: dict[str, int] = {}
     for sym, pkls in cache.items():
-        X, Y, days, spread, d, cost = build_symbol(pkls)
+        X, Y, days, spread, d, cost = build_symbol(pkls, with_ofi=(args.state == "ofi"))
+        n_ech[sym] = len(X)
         print(f"  [{sym}] {len(X)} échantillons sur {days.max() + 1} jours", flush=True)
         costs[sym] = cost
-        r1, rR = phase1a(sym, X, Y, days, d)
+        r1, rR = phase1a(sym, X, Y, days, d, dims)
         all1 += r1
         allR += rR
         e, det = economic_check(sym, X, Y, days, spread)
@@ -169,7 +206,7 @@ def main():
     print("\n=== Phase 1a - R²_OOS 1-step par dimension "
           "(baseline: 0 pour ret, no-change sinon) ===")
     print(res1.pivot_table(index="dim", columns="model", values="r2", aggfunc="mean")
-          .reindex(STATE_COLS).round(5).to_string())
+          .reindex(dims).round(5).to_string())
     print("\n--- 'ret' par symbole ---")
     print(res1[res1.dim == "ret"].pivot_table(index="symbol", columns="model",
                                               values="r2", aggfunc="mean").round(5).to_string())
@@ -193,6 +230,11 @@ def main():
 
     res1.to_csv(os.path.join(args.out, "crypto_lob_1step.csv"), index=False)
     resR.to_csv(os.path.join(args.out, "crypto_lob_rollout.csv"), index=False)
+    # Trace du nombre d'echantillons par symbole : le bootstrap apparie verifie que les
+    # deux bras ont exactement le meme echantillon avant de comparer quoi que ce soit.
+    with open(os.path.join(args.out, "crypto_lob_nsample.json"), "w",
+              encoding="utf-8") as fh:
+        json.dump({"state": args.state, "nsample": n_ech}, fh, indent=2, sort_keys=True)
 
     # --- figures ---
     fig, ax = plt.subplots(figsize=(7, 4.5))

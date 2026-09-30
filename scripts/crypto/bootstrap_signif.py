@@ -32,8 +32,7 @@ import pandas as pd
 import yaml
 
 PREREG = os.path.join("configs", "phase1_crypto_prereg.yaml")
-OOS_DIR = "experiments"
-OUT_CSV = os.path.join(OOS_DIR, "crypto_lob_bootstrap.csv")
+OOS_DIR = "experiments"  # défaut ; --oos-dir permet de rejouer les règles sur le bras enrichi
 
 
 def load_prereg(path: str = PREREG) -> dict:
@@ -132,6 +131,17 @@ def symbol_report(sym: str, npz: dict, cfg: dict) -> dict:
 
 
 def main() -> None:
+    global OOS_DIR
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--oos-dir", default=OOS_DIR,
+                    help="dossier des npz OOS (défaut: experiments). Pour le bras enrichi "
+                         "OFI, passer experiments_ofi : mêmes règles, autre état.")
+    args = ap.parse_args()
+    OOS_DIR = args.oos_dir
+    out_csv = os.path.join(OOS_DIR, "crypto_lob_bootstrap.csv")
+
     cfg = load_prereg()
     symbols = cfg["donnees"]["symboles"]
     fees = [float(f) for f in cfg["evaluation"]["frais_bp"]]
@@ -205,8 +215,8 @@ def main() -> None:
           f"borne basse > 0 sur {int((df['net_lo_f0'] > 0).sum())}/{len(df)} "
           f"(borne optimiste : frais nuls irréalistes, ne vaut pas edge)")
 
-    df.to_csv(OUT_CSV, index=False)
-    print(f"\n-> {OUT_CSV}")
+    df.to_csv(out_csv, index=False)
+    print(f"\n-> {out_csv}")
 
 
 if __name__ == "__main__":
