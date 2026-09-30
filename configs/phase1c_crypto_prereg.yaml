@@ -1,0 +1,180 @@
+# Pré-enregistrement - Phase 1c crypto : ENRICHISSEMENT DU WORLD MODEL (OFI)
+#
+# FIGÉ et COMMITÉ AVANT toute exécution de l'évaluation enrichie. Rien ici ne se
+# modifie après avoir vu un résultat (invariant I3). Toute déviation doit apparaître
+# dans le rapport COMME déviation, pas être absorbée.
+#
+# Motif : le rapport de la phase 1 ([reports/PHASE1_CRYPTO.md]) conclut à un signal
+# réel mais non exploitable, et note explicitement que le R²_OOS y est un PLANCHER.
+# La question de cette phase : apporter au modèle une information que les barres 1 s
+# ne contiennent pas change-t-il le verdict économique ?
+
+meta:
+  nom: phase1c_crypto_ofi
+  fige_le: "2026-10-01"
+  phase_precedente: "configs/phase1_crypto_prereg.yaml (44 dates x 5 symboles, publié)"
+  question: >
+    L'ajout de l'OFI événementiel au vecteur d'état améliore-t-il la prévision du
+    rendement, et cet apport suffit-il à changer le verdict économique ?
+
+donnees:
+  # IDENTIQUES au pré-enregistrement de la phase 1 : c'est ce qui rend la comparaison
+  # directe. Le jeu de données ne bouge pas ; seule la représentation change.
+  source: "Bybit L2, quote-saver.bycsi.com/orderbook/linear, dumps ob500 (500 niveaux)"
+  symboles: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT]
+  dates:
+    - "2023-01-20"
+    - "2023-02-11"
+    - "2023-03-06"
+    - "2023-03-28"
+    - "2023-04-20"
+    - "2023-05-12"
+    - "2023-06-04"
+    - "2023-06-26"
+    - "2023-07-19"
+    - "2023-08-10"
+    - "2023-09-02"
+    - "2023-09-24"
+    - "2023-10-17"
+    - "2023-11-08"
+    - "2023-11-30"
+    - "2023-12-23"
+    - "2024-01-14"
+    - "2024-02-06"
+    - "2024-02-28"
+    - "2024-03-22"
+    - "2024-04-13"
+    - "2024-05-06"
+    - "2024-05-28"
+    - "2024-06-20"
+    - "2024-07-12"
+    - "2024-08-03"
+    - "2024-08-26"
+    - "2024-09-17"
+    - "2024-10-10"
+    - "2024-11-01"
+    - "2024-11-24"
+    - "2024-12-16"
+    - "2025-01-08"
+    - "2025-01-30"
+    - "2025-02-22"
+    - "2025-03-16"
+    - "2025-04-08"
+    - "2025-04-30"
+    - "2025-05-08"
+    - "2025-05-22"
+    - "2025-06-02"
+    - "2025-06-18"
+    - "2025-07-09"
+    - "2025-08-06"
+  couverture_exigee: >
+    Les 44 x 5 couples doivent TOUS avoir un OFI. Un couple manquant est un ÉCHEC
+    BLOQUANT rapporté comme tel, jamais un retrait silencieux : la comparaison
+    appariée exige des échantillons identiques entre les deux bras.
+
+# L'ENRICHISSEMENT. Une seule chose change par rapport à la phase 1.
+etat:
+  base: [ret, spread_rel, imb1, depth_imb, micro_dev]     # = phase 1, inchangé
+  enrichi: [ret, spread_rel, imb1, depth_imb, micro_dev, ofi]
+  placement: >
+    `ofi` est AJOUTÉ EN DERNIÈRE POSITION. Conséquence voulue : RET_IDX reste 0 et les
+    cinq premières dimensions gardent leur sens exact, donc tout l'aval (export .npz,
+    bootstrap, position = signe de la prédiction de ret) est inchangé.
+  ofi:
+    definition: >
+      Order Flow Imbalance de Cont, Kukanov & Stoikov au MEILLEUR niveau, calculé
+      ÉVÉNEMENT PAR ÉVÉNEMENT sur le flux brut Bybit (snapshot + deltas), puis sommé
+      par seconde. Implémentation : src/mirage/data/bybit_ofi.py.
+    granularite: evenementielle
+    alignement: >
+      OFI(T) = somme des contributions des événements de la seconde T, donc
+      contemporain de ret(T) = log(mid_T) - log(mid_{T-1}). Secondes sans événement
+      au meilleur niveau : 0 (un flux nul n'est pas une donnée manquante).
+    causalite: >
+      OFI(T) ne dépend que des événements de la seconde T. Testé par
+      tests/test_ofi_causal.py (propriété de préfixe : ajouter du futur ne modifie
+      pas le passé).
+    justification: >
+      Un OFI recalculé sur les barres (variation nette entre snapshots à 1 s) serait
+      une quasi-fonction de la fenêtre d'entrée déjà fournie au modèle : le test
+      serait quasi vide. Seul l'OFI événementiel apporte de l'information absente
+      des barres, car il capture le flux INTRA-seconde.
+
+# Strictement identique à la phase 1 : c'est la condition de comparabilité.
+modele:
+  classe: LinearWM
+  lookback: 16
+  n_folds: 5
+  min_train_frac: 0.4
+  scheme: expanding
+  embargo: "max(10, lookback) = 16 échantillons"
+  cible: "rendement du mid à +1 s (RET_IDX)"
+  baseline: "0 pour ret (random walk), no-change pour les niveaux"
+  metrique_principale: "r2_oos"
+
+evaluation:
+  frais_bp: [0.0, 2.0, 5.5]
+  cout: "demi-spread réel mesuré à la barre de décision + frais, payé au changement de position"
+  position: "signe de la prédiction linéaire OOS"
+  remise_a_plat: "à chaque frontière de jour (aucun faux retournement à minuit)"
+  bootstrap:
+    unite: "jour"
+    n_boot: 2000
+    seed: 0
+    type: "circulaire, rééchantillonnage des jours avec remise"
+    variante_robustesse:
+      longueur_bloc_jours: 3
+    # POINT MÉTHODOLOGIQUE CENTRAL. Les deux bras sont comparés sur les MÊMES
+    # journées rééchantillonnées à l'intérieur de chaque réplique (bootstrap
+    # APPARIÉ). Un intervalle de confiance calculé sur deux rééchantillonnages
+    # indépendants serait trop large : il ignorerait la corrélation entre les deux
+    # modèles, qui partagent tout sauf une colonne.
+    appariement: >
+      Pour chaque réplique du bootstrap, les mêmes journées tirées avec remise servent
+      à recalculer R²_OOS(base) et R²_OOS(enrichi) ; la statistique est leur
+      DIFFÉRENCE. Idem pour net_bp. C'est la loi de la différence sur des échantillons
+      appariés.
+    stats:
+      - "r2_oos(ret) par symbole et par bras"
+      - "delta r2_oos(ret) = enrichi - base, IC95 apparié"
+      - "net_bp par symbole, par frais et par bras ; delta net_bp"
+
+# Règles de décision. Écrites AVANT les résultats.
+regles:
+  apport:
+    enonce: >
+      L'OFI est déclaré APPORTER UNE INFORMATION RÉELLE ssi l'IC95 apparié de
+      delta_r2_oos(ret) exclut 0 (borne basse strictement positive) pour au moins
+      4 des 5 symboles.
+  mirage:
+    enonce: >
+      Le mirage est déclaré TOUJOURS CONFIRMÉ ssi, dans le bras ENRICHI, l'IC95 de
+      net_bp à 2 bp est entièrement strictement négatif pour CHAQUE symbole. C'est
+      la règle de la phase 1, réappliquée à l'identique.
+  bascule:
+    enonce: >
+      Une BASCULE de verdict exige que la borne basse de l'IC95 de net_bp à 2 bp soit
+      strictement positive pour un symbole du bras enrichi. Aucune autre lecture
+      (net moyen > 0, borne haute > 0, amélioration du seul R²) ne vaut bascule.
+  amelioration_non_concluante:
+    enonce: >
+      Si l'OFI améliore le R²_OOS sans que le net à 2 bp cesse d'être négatif, le
+      résultat est rapporté comme AMÉLIORATION STATISTIQUE SANS BASCULE ÉCONOMIQUE.
+      C'est une issue attendue, pas un échec : elle sépare la qualité du modèle de
+      la question de l'edge.
+  resultat_negatif:
+    enonce: >
+      Un résultat négatif bien démontré est un résultat valide. Si l'OFI n'apporte
+      rien, il est publié tel quel.
+
+rapport:
+  sortie: "reports/PHASE1C_OFI.md (+ section dans reports/PHASE1_CRYPTO.md, + README)"
+  doit_contenir:
+    - "couverture réelle : 44 x 5 couples OFI, ou l'échec bloquant explicite"
+    - "R²_OOS 1-step par dimension, base vs enrichi, dont la dimension ofi elle-même"
+    - "delta R²_OOS(ret) par symbole, avec IC95 apparié"
+    - "tableau économique complet base vs enrichi : gross, turnover, net par frais"
+    - "net_bp à 2 bp par symbole et par bras, avec IC95, et la statistique de bascule"
+    - "verdicts des quatre règles, appliqués mécaniquement"
+    - "limites explicites, dont ce que l'OFI événementiel ne capture pas"
+    - "tous les chiffres, sans sélection"
