@@ -12,4 +12,5 @@ __pycache__/
 # Données (jamais commitées - voir data/README.md)
 data/raw/
 experiments/
+experiments_ofi/
 wandb/
