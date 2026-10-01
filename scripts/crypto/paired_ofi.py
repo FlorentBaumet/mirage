@@ -123,11 +123,14 @@ def one_step_table() -> None:
     for arm, p in paths.items():
         df = pd.read_csv(p)
         piv[arm] = df.pivot_table(index="dim", columns="model", values="r2", aggfunc="mean")
-    dims = [d for d in piv["ofi"].index if d in piv["base"].index]
+    # UNION et non intersection : le pre-enregistrement exige la dimension `ofi` ELLE-MEME,
+    # qui n'existe que dans le bras enrichi. Par intersection, elle disparaissait du tableau
+    # sans que rien ne le signale (`r2_base` vaut donc NaN sur cette ligne).
+    dims = list(piv["base"].index) + [d for d in piv["ofi"].index if d not in piv["base"].index]
     print("\n--- R2_OOS 1-step par dimension : lineaire, base vs enrichi ---")
     tbl = pd.DataFrame({
-        "r2_base": piv["base"].loc[dims, "linear"],
-        "r2_ofi": piv["ofi"].loc[dims, "linear"],
+        "r2_base": piv["base"].reindex(dims)["linear"],
+        "r2_ofi": piv["ofi"].reindex(dims)["linear"],
     })
     tbl["delta"] = tbl["r2_ofi"] - tbl["r2_base"]
     print(tbl.round(5).to_string())
