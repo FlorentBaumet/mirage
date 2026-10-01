@@ -59,6 +59,20 @@ def load_cached() -> dict[str, list[str]]:
     return {k: sorted(v) for k, v in out.items()}
 
 
+def _merge_csv(path: str, new: pd.DataFrame) -> None:
+    """Ecrit `new` en CONSERVANT les lignes des symboles non relances.
+
+    Un run partiel (--symbols) ne doit jamais amputer les CSV : sans cette fusion,
+    relancer un symbole seul effacerait les resultats deja acquis pour les autres.
+    """
+    if os.path.exists(path):
+        old = pd.read_csv(path)
+        if "symbol" in old.columns:
+            old = old[~old["symbol"].isin(new["symbol"].unique())]
+        new = pd.concat([old, new], ignore_index=True)
+    new.to_csv(path, index=False)
+
+
 def build_symbol(pkls: list[str], with_ofi: bool = False):
     """Construit les échantillons multi-jours d'un symbole (par jour, puis concaténés).
 
@@ -162,6 +176,11 @@ def main():
                     help="'ofi' ajoute l'order flow imbalance evenementiel en 6e dim. "
                          "Ecrire dans un --out distinct : les .npz du bras de base sont "
                          "ceux publies, et l'appariement les relit.")
+    ap.add_argument("--symbols", nargs="*", default=None,
+                    help="sous-ensemble de symboles a traiter (defaut : tous ceux qui ont "
+                         "des .pkl). Les CSV et le JSON sont fusionnes par symbole, donc un "
+                         "run partiel ne detruit rien ; les figures ne sont regenerees que "
+                         "sur un run complet.")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -177,6 +196,17 @@ def main():
     if not cache:
         raise SystemExit("Aucun .pkl dans data/raw/crypto_lob - lance d'abord "
                          "scripts/fetch_bybit_batch.py")
+    tous = list(cache)
+    if args.symbols:
+        # Un symbole a la fois : pic memoire bas, et chaque run partiel est acquis
+        # (le script ne reprend pas ou il s'est arrete, il repart de zero).
+        inconnus = [s for s in args.symbols if s not in cache]
+        if inconnus:
+            raise SystemExit(f"Aucun .pkl pour : {', '.join(inconnus)}. "
+                             f"Disponibles : {', '.join(tous)}")
+        cache = {s: cache[s] for s in args.symbols}
+    complet = set(cache) == set(tous)
+
     print("=== Couverture ===")
     for sym, pk in cache.items():
         dates = [os.path.basename(p)[:10] for p in pk]
@@ -223,18 +253,31 @@ def main():
     print("\n=== VERDICT économique - l'edge survit-il aux frais ? ===")
     econ = pd.concat(econ_rows, ignore_index=True)
     print(econ.to_string(index=False))
-    econ.to_csv(os.path.join(args.out, "crypto_lob_economic.csv"), index=False)
+    _merge_csv(os.path.join(args.out, "crypto_lob_economic.csv"), econ)
     verdict = "EDGE (net>0 à frais réalistes)" if (econ[econ.fee_bp >= 2.0]["net_bp"] > 0).any() \
         else "MIRAGE (net<=0 dès des frais réalistes)"
     print(f"\n-> {verdict}")
 
-    res1.to_csv(os.path.join(args.out, "crypto_lob_1step.csv"), index=False)
-    resR.to_csv(os.path.join(args.out, "crypto_lob_rollout.csv"), index=False)
+    _merge_csv(os.path.join(args.out, "crypto_lob_1step.csv"), res1)
+    _merge_csv(os.path.join(args.out, "crypto_lob_rollout.csv"), resR)
     # Trace du nombre d'echantillons par symbole : le bootstrap apparie verifie que les
     # deux bras ont exactement le meme echantillon avant de comparer quoi que ce soit.
-    with open(os.path.join(args.out, "crypto_lob_nsample.json"), "w",
-              encoding="utf-8") as fh:
-        json.dump({"state": args.state, "nsample": n_ech}, fh, indent=2, sort_keys=True)
+    ns_path = os.path.join(args.out, "crypto_lob_nsample.json")
+    prev: dict[str, int] = {}
+    if os.path.exists(ns_path):
+        with open(ns_path, encoding="utf-8") as fh:
+            prev = json.load(fh).get("nsample", {})
+    prev.update(n_ech)
+    with open(ns_path, "w", encoding="utf-8") as fh:
+        json.dump({"state": args.state, "nsample": prev}, fh, indent=2, sort_keys=True)
+
+    if not complet:
+        # Les figures (cout, rollout, stabilite, mirage) porteraient sur les seuls
+        # symboles relances : une version incomplete remplacerait une version complete.
+        print("\nRun partiel : figures non regenerees. Relance sans --symbols pour les "
+              "produire sur l'ensemble des symboles.")
+        print(f"\nPredictions OOS par symbole : {args.out}/crypto_lob_oos_<SYM>.npz")
+        return
 
     # --- figures ---
     fig, ax = plt.subplots(figsize=(7, 4.5))
