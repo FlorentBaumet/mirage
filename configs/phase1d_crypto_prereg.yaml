@@ -1,0 +1,147 @@
+# Pré-enregistrement - Phase 1d crypto : L'OFI EST-IL EXPLOITABLE PAR UN MODÈLE NON LINÉAIRE ?
+#
+# FIGÉ et COMMITÉ AVANT toute exécution. Rien ici ne se modifie après avoir vu un
+# résultat (invariant I3). Toute déviation doit apparaître dans le rapport COMME
+# déviation, pas être absorbée.
+#
+# Motif : la phase 1c a mesuré l'apport de l'OFI événementiel SUR LE SEUL MODÈLE
+# LINÉAIRE (LinearWM), comme le pré-enregistrait `phase1c_crypto_prereg.yaml`. Son
+# rapport note explicitement cette limite : « la règle `apport` a été évaluée sur
+# LinearWM ; un modèle non linéaire n'a pas été testé pour cette règle ». Il laisse donc
+# DEUX lectures non tranchées : soit l'information intra-seconde est déjà contenue dans
+# l'état, soit elle est réelle mais hors de portée du linéaire.
+#
+# CETTE PHASE TRANCHE CETTE AMBIGUÏTÉ. Question unique : à état IDENTIQUE, le modèle
+# non linéaire extrait-il de l'OFI une information que le linéaire n'extrait pas ?
+#
+# CE QUI NE CHANGE PAS : les données, l'état, les folds, la cible, les frais, le
+# dispositif de bootstrap. La SEULE variable est la classe du modèle. C'est ce qui rend
+# la comparaison lisible.
+
+meta:
+  nom: phase1d_crypto_ofi_non_lineaire
+  fige_le: "2026-10-02"
+  phase_precedente: "configs/phase1c_crypto_prereg.yaml (mêmes données, modèle linéaire)"
+  question: >
+    À état strictement identique (base 5 dims vs enrichi 6 dims avec l'OFI), le modèle
+    non linéaire (MLPWM) produit-il un delta R²_OOS(ret) apparié positif là où le modèle
+    linéaire n'en produisait aucun ?
+
+donnees:
+  # IDENTIQUES à la phase 1c, à l'octet : ce sont les MÊMES fichiers .pkl sur disque.
+  # La liste des 44 dates n'est pas recopiée ici pour éviter toute divergence de copie ;
+  # elle est lue dans `configs/phase1c_crypto_prereg.yaml`, qui est figé et commité.
+  reference_dates: "configs/phase1c_crypto_prereg.yaml -> donnees.dates (44 dates)"
+  source: "Bybit L2, quote-saver.bycsi.com/orderbook/linear, dumps ob500 (500 niveaux)"
+  symboles: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT]
+  couverture_exigee: >
+    Les 44 x 5 couples, avec OFI et barres. Un couple manquant est un ÉCHEC BLOQUANT
+    rapporté comme tel, jamais un retrait silencieux : la comparaison appariée exige des
+    échantillons identiques entre les deux bras ET avec la phase 1c.
+
+# L'ÉTAT EST CELUI DE LA PHASE 1c, INCHANGÉ. C'est tout l'intérêt : si l'état changeait
+# aussi, on ne saurait pas si la différence vient du modèle ou de la représentation.
+etat:
+  base: [ret, spread_rel, imb1, depth_imb, micro_dev]
+  enrichi: [ret, spread_rel, imb1, depth_imb, micro_dev, ofi]
+  placement: >
+    `ofi` en DERNIÈRE position (RET_IDX reste 0), exactement comme en phase 1c.
+
+modele:
+  classe: MLPWM
+  # Hyperparamètres FIGÉS ici. Ce sont ceux que `phase1a` utilise déjà dans
+  # crypto_lob.py (make_wm_suite(..., "mlp")), donc ceux dont le R²_OOS 1-step par
+  # dimension est déjà publié : aucune sélection a posteriori n'est possible.
+  hyperparametres:
+    hidden: [64, 32]
+    max_iter: 300
+    seed: 0
+    alpha: 0.001
+    early_stopping: true
+    validation_fraction: 0.15
+    n_iter_no_change: 15
+  modele_de_reference: LinearWM   # la phase 1c, rejouée sur les mêmes folds
+  lookback: 16
+  n_folds: 5
+  min_train_frac: 0.4
+  scheme: expanding
+  embargo: "max(10, lookback) = 16 échantillons"
+  cible: "rendement du mid à +1 s (RET_IDX)"
+  baseline: "0 pour ret (random walk), no-change pour les niveaux"
+  metrique_principale: "r2_oos poolé sur les folds, par symbole"
+
+evaluation:
+  frais_bp: [0.0, 2.0, 5.5]
+  cout: "demi-spread réel mesuré à la barre de décision + frais, payé au changement de position"
+  position: "signe de la prédiction OOS du modèle considéré"
+  remise_a_plat: "à chaque frontière de jour (aucun faux retournement à minuit)"
+  bootstrap:
+    unite: "jour"
+    n_boot: 2000
+    seed: 0
+    type: "circulaire, rééchantillonnage des jours avec remise"
+    variante_robustesse:
+      longueur_bloc_jours: 3
+    # IDENTIQUE à la phase 1c : même tirage, même appariement. Les deux bras partagent
+    # les journées tirées à chaque réplique ; la statistique est leur DIFFÉRENCE.
+    appariement: >
+      Pour chaque réplique, les mêmes journées tirées avec remise recalculent
+      R²_OOS(base) et R²_OOS(enrichi) POUR LE MODÈLE CONSIDÉRÉ ; la statistique est leur
+      différence. Les deux modèles (linéaire, MLP) sont évalués sur les MÊMES folds et
+      les MÊMES journées : la comparaison linéaire vs non linéaire est appariée elle
+      aussi.
+    stats:
+      - "r2_oos(ret) par symbole, par bras et par modèle"
+      - "delta r2_oos(ret) apparié : enrichi - base, pour le MLP (statistique principale)"
+      - "delta r2_oos(ret) apparié : enrichi - base, pour le linéaire (contrôle, doit reproduire la phase 1c)"
+      - "delta r2_oos(ret) apparié : MLP - linéaire, à état de base (effet de la classe de modèle seule)"
+      - "net_bp par symbole, par frais, par bras et par modèle"
+
+# Règles de décision. Écrites AVANT les résultats.
+regles:
+  apport_non_lineaire:
+    enonce: >
+      Le modèle non linéaire est déclaré EXTRAIRE UNE INFORMATION QUE LE LINÉAIRE MANQUE
+      ssi l'IC95 apparié de delta_r2_oos(ret) ENRICHI - BASE pour le MLP a une borne
+      basse strictement positive pour au moins 4 des 5 symboles.
+  apport_non_lineaire_partiel:
+    enonce: >
+      Si le MLP fait APPORTER l'OFI sur 1 à 3 symboles sur 5, le résultat est rapporté
+      comme APPORT PARTIEL, sans être promu en découverte : la règle pré-enregistrée
+      exige 4/5, et un seuil atteint sur une minorité de symboles n'est pas un apport.
+  plancher_non_lineaire:
+    enonce: >
+      Si le MLP n'extrait pas davantage l'OFI, la lecture « l'information est déjà
+      contenue dans l'état » est RENFORCÉE : elle vaut alors pour deux classes de
+      modèles, pas une seule. C'est un résultat négatif plus fort que celui de la 1c.
+  modele_gagne_t-il:
+    enonce: >
+      Question secondaire, rapportée séparément et JAMAIS confondue avec l'apport de
+      l'OFI : à état de base, le MLP bat-il le linéaire (IC95 apparié de delta_r2_oos
+      strictement positif) ? Une réponse positive signifierait que le modèle non
+      linéaire aide, mais sur d'autres dimensions que l'OFI.
+  mirage:
+    enonce: >
+      Le mirage est déclaré TOUJOURS CONFIRMÉ ssi, dans le bras ENRICHI évalué par le
+      MLP, l'IC95 de net_bp à 2 bp est entièrement strictement négatif pour CHAQUE
+      symbole. Règle de la phase 1, réappliquée à l'identique.
+  bascule:
+    enonce: >
+      Une BASCULE exige la borne basse de l'IC95 de net_bp à 2 bp strictement positive
+      pour un symbole du bras enrichi (modèle considéré). Aucune autre lecture ne vaut
+      bascule.
+  resultat_negatif:
+    enonce: >
+      Un résultat négatif bien démontré est un résultat valide et se publie tel quel.
+
+rapport:
+  sortie: "reports/PHASE1D_NL.md (+ section dans reports/PHASE1C_OFI.md, + README)"
+  doit_contenir:
+    - "cohérence vérifiée avec la phase 1c : le contrôle linéaire doit reproduire ses chiffres, sinon l'écart est expliqué"
+    - "delta R²_OOS(ret) apparié enrichi-base pour le MLP, par symbole, avec IC95"
+    - "le même delta pour le linéaire, côte à côte : c'est la comparaison qui répond à la question"
+    - "delta R²_OOS(ret) apparié MLP-linéaire à état de base (effet de modèle seul)"
+    - "tableau économique par modèle et par bras, net à 2 bp avec IC95"
+    - "verdicts des règles, appliqués mécaniquement"
+    - "limites explicites : ce qu'un MLP ne capte pas, et ce que ce test ne prouve pas"
+    - "tous les chiffres, sans sélection"

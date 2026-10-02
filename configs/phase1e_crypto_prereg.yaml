@@ -1,0 +1,133 @@
+# Pré-enregistrement - Phase 1e crypto : UNE DIMENSION D'ÉTAT HORS DU MEILLEUR NIVEAU
+#
+# FIGÉ et COMMITÉ AVANT toute exécution. Rien ici ne se modifie après avoir vu un
+# résultat (invariant I3).
+#
+# Motif : le rapport de la phase 1c liste, comme LIMITE N°1 de l'expérience OFI,
+# « le flux au-delà du meilleur niveau : toute l'activité sur les niveaux 2 à 500 est
+# invisible ». L'OFI événementiel ne regarde que (bid1, ask1). Cette phase teste
+# l'autre moitié de la question : l'information portée par la PROFONDEUR du carnet
+# (niveaux 2 à 10) aide-t-elle à prévoir le rendement ?
+#
+# CONTRAINTE DE DONNÉES, DITE D'EMBLÉE. Le flux BRUT (dumps ob500) n'est plus sur
+# disque : il ne reste que 2 archives .zip sur 220. Un OFI événementiel multi-niveaux
+# exigerait de re-télécharger ~60 Go. Cette phase se fait donc sur les BARRES 1 s
+# top-10, qui contiennent déjà l'état des niveaux 2 à 10 à chaque seconde - mais que
+# l'état actuel ne résume que par UNE SEULE somme (depth_imb, niveaux 1 à 10).
+# C'est cette réduction que l'on teste, pas le flux intra-seconde (déjà testé en 1c).
+
+meta:
+  nom: phase1e_crypto_profondeur
+  fige_le: "2026-10-02"
+  phase_precedente: "configs/phase1c_crypto_prereg.yaml (mêmes données)"
+  question: >
+    Ajouter au vecteur d'état une description de la PROFONDEUR du carnet hors meilleur
+    niveau (imbalance des niveaux 2-10, et asymétrie de l'empilement au contact)
+    améliore-t-il la prévision du rendement, et change-t-il le verdict économique ?
+
+donnees:
+  reference_dates: "configs/phase1c_crypto_prereg.yaml -> donnees.dates (44 dates)"
+  source: "Bybit L2, dumps ob500 -> barres 1 s top-10 (déjà sur disque, data/raw/crypto_lob)"
+  symboles: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT]
+  couverture_exigee: >
+    Les 44 x 5 couples, exactement ceux des phases 1 et 1c. Un couple manquant est un
+    ÉCHEC BLOQUANT rapporté comme tel.
+
+etat:
+  base: [ret, spread_rel, imb1, depth_imb, micro_dev]
+  # L'enrichissement de CETTE phase. Volontairement SANS l'OFI : mélanger les deux
+  # changerait deux choses à la fois et rendrait la comparaison illisible.
+  enrichi: [ret, spread_rel, imb1, depth_imb, micro_dev, imb_deep, slope_asym]
+  placement: >
+    Les deux nouvelles dimensions sont AJOUTÉES EN DERNIÈRE POSITION, dans cet ordre.
+    RET_IDX reste 0 et les cinq premières dimensions gardent leur sens exact.
+  dimensions:
+    imb_deep:
+      definition: >
+        (somme_{i=2..10} bid_size_i - somme_{i=2..10} ask_size_i)
+        / (somme_{i=2..10} bid_size_i + somme_{i=2..10} ask_size_i + eps)
+      role: "imbalance STRICTEMENT au-delà du meilleur niveau."
+      reserve_honnete: >
+        ATTENDU PROCHE D'UNE REDONDANCE avec (imb1, depth_imb) : le carnet partage 9
+        niveaux sur 10 avec depth_imb. Cette dimension est incluse pour que le bloc soit
+        une description complète de la profondeur ; il ne faut PAS attendre d'elle un
+        apport propre. Le pré-enregistrement l'écrit AVANT de voir le résultat.
+    slope_asym:
+      definition: >
+        bid_share - ask_share, avec
+        bid_share = bid_size_1 / (somme_{i=1..10} bid_size_i + eps) et
+        ask_share = ask_size_1 / (somme_{i=1..10} ask_size_i + eps).
+      role: >
+        Asymétrie de l'EMPILEMENT : de quel côté la liquidité est-elle concentrée AU
+        CONTACT plutôt qu'en profondeur. C'est la SEULE dimension du bloc porteuse
+        d'un axe absent de l'état de base : ni imb1 (qui est L1 seul, sans échelle) ni
+        depth_imb (qui agrège 1-10) ne déterminent le RAPPORT entre le niveau 1 et le
+        total d'un côté. Range (-1, 1).
+    causalite: >
+      Chaque dimension à la barre t n'utilise que la barre t. Propriété vérifiée par
+      test de préfixe (ajouter du futur ne modifie pas le passé), ajouté à
+      tests/test_ofi_causal.py.
+    nan: >
+      Garde eps sur tous les dénominateurs, puis fillna(0). Aucune ligne ne doit
+      disparaître : le nombre d'échantillons doit être IDENTIQUE au bras de base, sinon
+      les deux bras ne sont pas appariables.
+
+modele:
+  classe: LinearWM            # primaire, comme en phase 1c (comparabilité)
+  secondaire: MLPWM           # rapporté en plus, hyperparamètres de la phase 1d
+  lookback: 16
+  n_folds: 5
+  min_train_frac: 0.4
+  scheme: expanding
+  embargo: "max(10, lookback) = 16 échantillons"
+  cible: "rendement du mid à +1 s (RET_IDX)"
+  baseline: "0 pour ret (random walk), no-change pour les niveaux"
+
+evaluation:
+  frais_bp: [0.0, 2.0, 5.5]
+  cout: "demi-spread réel mesuré à la barre de décision + frais, payé au changement de position"
+  position: "signe de la prédiction OOS du modèle considéré"
+  remise_a_plat: "à chaque frontière de jour"
+  bootstrap:
+    unite: "jour"
+    n_boot: 2000
+    seed: 0
+    type: "circulaire, rééchantillonnage des jours avec remise"
+    variante_robustesse:
+      longueur_bloc_jours: 3
+    appariement: >
+      Identique aux phases 1c/1d : mêmes journées tirées pour les deux bras à chaque
+      réplique, statistique = différence.
+
+regles:
+  apport_profondeur:
+    enonce: >
+      La profondeur hors meilleur niveau est déclarée APPORTER UNE INFORMATION RÉELLE
+      ssi l'IC95 apparié de delta_r2_oos(ret) = enrichi - base a une borne basse
+      strictement positive pour au moins 4 des 5 symboles.
+  apport_partiel:
+    enonce: >
+      1 à 3 symboles sur 5 : rapporté comme APPORT PARTIEL, non promu en découverte.
+  mirage:
+    enonce: >
+      Règle de la phase 1, réappliquée à l'identique dans le bras enrichi.
+  bascule:
+    enonce: >
+      Exige la borne basse de l'IC95 de net_bp à 2 bp strictement positive pour un
+      symbole du bras enrichi.
+  resultat_negatif:
+    enonce: >
+      Un résultat négatif bien démontré est un résultat valide et se publie tel quel.
+
+rapport:
+  sortie: "reports/PHASE1E_PROFONDEUR.md (+ section dans reports/PHASE1C_OFI.md, + README)"
+  doit_contenir:
+    - "contrôle : le R²_OOS linéaire du bras de base doit reproduire les chiffres publiés"
+    - "R²_OOS 1-step par dimension, base vs enrichi, dont les DEUX dimensions ajoutées"
+    - "delta R²_OOS(ret) par symbole, IC95 apparié, pour le linéaire et pour le MLP"
+    - "corrélation de chaque dimension ajoutée avec les dimensions existantes (pour montrer ou non la redondance annoncée)"
+    - "tableau économique : gross, turnover, net par frais, base vs enrichi"
+    - "net à 2 bp par symbole et par bras, avec IC95"
+    - "verdicts des règles, appliqués mécaniquement"
+    - "limites : ce que les barres top-10 ne contiennent pas (niveaux >10, ordres cachés, flux intra-seconde)"
+    - "tous les chiffres, sans sélection"
