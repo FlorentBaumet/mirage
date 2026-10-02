@@ -155,7 +155,8 @@ src/mirage/
 scripts/
   lobster/              bootstrap_signif, impact_curves, run_gru, tick_regime,
                         make_synthetic_lobster
-  crypto/               download_binance, fetch_bybit_batch, crypto_lob
+  crypto/               download_binance, fetch_bybit_batch, crypto_lob, fetch_ofi,
+                        bootstrap_signif, spread_regime, paired_ofi
 configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1, phase1c)
 reports/                les 6 write-ups + figures
 tests/                  tests anti-fuite, frontières de journée, impact
