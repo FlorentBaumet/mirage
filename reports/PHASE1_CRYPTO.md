@@ -53,7 +53,7 @@ Deux précisions qui comptent pour lire la suite :
 - **2023 n'apparaît jamais en test.** Avec `min_train_frac = 0.4` en schéma *expanding*, le
   train initial consomme les 17 premières journées (les 16 de 2023 plus le 2024-01-14). Le
   test ne commence qu'en cours de journée le 2024-02-06. Le modèle est donc **entraîné** sur
-  des journées 2023 qu'il ne sera jamais évalué dessus - détail repris en §6.
+  des journées 2023 qu'il ne sera jamais évalué dessus - détail repris en §7.
 
 Pipeline : `scripts/crypto/fetch_bybit_batch.py` → `mirage/data/bybit_lob.py` →
 `scripts/crypto/crypto_lob.py` → `scripts/crypto/bootstrap_signif.py`.
@@ -346,7 +346,35 @@ pas - le spread seul tue le signal. Le maker ne peut donc sauver au mieux que le
 le spread est déjà minuscule (BTC/ETH), précisément ceux où le fill-rate s'effondre avec la
 taille.
 
-## 6. Limites
+## 6. Prolongement - phase 1c : l'OFI événementiel n'apporte rien
+
+Le R²_OOS de ce rapport est un **plancher**, et les barres 1 s ne contiennent pas tout le
+flux du carnet : elles ne gardent que l'état à la fin de chaque seconde. L'extension
+évidente a été testée dans [`PHASE1C_OFI.md`](PHASE1C_OFI.md) - ajouter au vecteur d'état
+l'**OFI événementiel** (Cont, Kukanov & Stoikov au meilleur niveau, calculé sur le flux
+brut Bybit puis sommé par seconde), la seule information réellement absente des barres.
+Rien d'autre ne change : mêmes 44 journées × 5 symboles, même modèle, mêmes folds, même
+grille de frais. Le seul ajout est une colonne, en dernière position, dans une comparaison
+**appariée** (les mêmes journées tirées pour les deux bras à chaque réplique du bootstrap).
+
+**Verdict : négatif, et publié tel quel.**
+
+- `ΔR²_OOS(ret)` apparié compris entre **−0.00062 et +0.00004** selon le symbole ; IC95
+  appariés de largeur 0.00039 à 0.00219 ; borne basse strictement positive sur **0/5**
+  symbole pour un seuil pré-enregistré de ≥ 4/5 → **APPORT NON ÉTABLI**.
+- Le net à 2 bp est déplacé de moins de 0.01 bp : **MIRAGE TOUJOURS CONFIRMÉ**, **0/5
+  exploitable**, comme sur le bras de base.
+- La dimension `ofi` est elle-même très prévisible 1-step (R²_OOS 0.436), mais la cible
+  `ret` ne bouge pas : l'information intra-seconde au meilleur niveau est déjà contenue
+  dans l'état, ou n'est pas exploitable par le modèle linéaire - pas une information
+  manquante.
+
+Le plancher n'était donc pas un défaut de représentation au meilleur niveau. Détail complet,
+tableaux base vs enrichi et limites de ce que l'OFI événementiel ne capture pas :
+[`PHASE1C_OFI.md`](PHASE1C_OFI.md). Pré-enregistrement :
+[`../configs/phase1c_crypto_prereg.yaml`](../configs/phase1c_crypto_prereg.yaml).
+
+## 7. Limites
 
 - **2023 n'est jamais testé.** Les 17 premières journées (16 de 2023 + le 2024-01-14) tombent
   dans le train initial. L'OOS ne couvre que 2024-02-06 → 2025-08-06. Le modèle est entraîné
@@ -367,7 +395,7 @@ taille.
   informatif mais bruité y score mal. Les valeurs ici sont des planchers de ce qu'un modèle
   mieux calibré pourrait extraire.
 
-## 7. Reproduire
+## 8. Reproduire
 
 ```powershell
 # 1. Télécharger et reconstruire le carnet (44 journées x 5 symboles, ~28 Go de .pkl)

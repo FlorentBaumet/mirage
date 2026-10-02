@@ -16,6 +16,7 @@ Si tu ne lis qu'un document, lis le dernier.
 | 3 | [`PHASE1.md`](PHASE1.md) | LOBSTER | Prédire un **vecteur d'état** (5 dims) plutôt qu'un scalaire. Le prix reste un random walk ; la forme du carnet est légèrement prévisible linéairement. |
 | 4 | [`PHASE1B.md`](PHASE1B.md) | LOBSTER | Action-conditionner le world model : impact de ses propres ordres. Le plus petit ordre coûte **1.7–3 bp** contre un edge prédictible **≤ 0.1 bp**. |
 | 5 | [`PHASE1_CRYPTO.md`](PHASE1_CRYPTO.md) | 5 symboles × 44 journées, carnet Bybit L2, 19 M barres 1 s (11,4 M en test) | **Le cas d'école.** Le signal existe vraiment (R²_OOS 0.016–0.052, IC95 > 0 sur **5/5** symboles et positif sur 23 folds sur 25) et n'est toujours pas un edge : négatif dès 2 bp de frais avec un IC95 entièrement sous zéro, et déjà **négatif sans frais sur XRP**. |
+| 6 | [`PHASE1C_OFI.md`](PHASE1C_OFI.md) | idem PHASE1_CRYPTO, enrichi de l'OFI événementiel au meilleur niveau | **L'information en plus ne change rien.** Ajouter au world model le flux intra-seconde absent des barres 1 s (OFI événementiel) ne déplace pas la prévision du rendement (ΔR²_OOS(ret) apparié entre **−0.0006 et +0.0000**, apport non établi sur **0/5** au seuil ≥ 4/5) ni le verdict économique (net à 2 bp inchangé, mirage confirmé). Un résultat négatif publié tel quel. |
 
 ## Le fil
 
@@ -23,5 +24,12 @@ La Phase 0 montre un cas où « pas d'edge » vient surtout de « pas de signal 
 crypto construit le cas inverse, celui qui compte : un signal **réel**, mesuré, robuste -
 et une évaluation honnête qui refuse quand même de l'appeler un edge. Entre les deux, la
 Phase 1b chiffre la raison de fond : le coût d'exécution.
+
+La Phase 1c ferme l'échappatoire qui restait ouverte après la Phase 1 : si le R²_OOS est
+un **plancher**, c'est peut-être qu'il manque une information au modèle. L'information
+manquante au meilleur niveau - le flux intra-seconde, absent des barres 1 s - a été
+construite (OFI événementiel), fournie au modèle et testée en **apparié**. Elle n'apporte
+rien : le plancher n'était pas un défaut de représentation. Un résultat négatif qui mérite
+d'être publié comme tel.
 
 Les rapports sont écrits pour être lus dans l'ordre ci-dessus, mais chacun tient seul.

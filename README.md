@@ -36,7 +36,7 @@ SOL sur le jeu précédent. Le mirage ne repose donc sur aucune hypothèse de fr
 structurel. Détail, limites et chiffres complets :
 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md).
 
-## La thèse, démontrée sur cinq jeux de données
+## La thèse, démontrée sur six jeux de données
 
 | Phase | Données | Question | Verdict |
 |---|---|---|---|
@@ -45,6 +45,7 @@ structurel. Détail, limites et chiffres complets :
 | [**1a**](reports/PHASE1.md) | LOBSTER | Prédire le *vecteur d'état* du carnet plutôt qu'un scalaire | Le prix reste un random walk ; la forme du carnet (spread, imbalances, micro-price) est légèrement prévisible linéairement (R²_OOS 0.02–0.09). |
 | [**1b**](reports/PHASE1B.md) | LOBSTER | Action-conditionner le world model (impact de ses propres ordres) | Le plus petit ordre coûte déjà **1.7–3 bp** contre un edge prédictible **≤ 0.1 bp**. Mirage confirmé côté exécution. |
 | [**1 (crypto LOB)**](reports/PHASE1_CRYPTO.md) | 5 symboles × 44 journées, carnet Bybit L2, 19 M barres 1 s | Sait-on distinguer un vrai edge d'un mirage quand le signal existe ? | **Le cas d'école** : signal réel et significatif (R²_OOS 0.016–0.052, IC95 > 0 sur 5/5), backtest brut flatteur, net de coûts négatif partout dès 2 bp, et mort sans frais sur XRP. |
+| [**1c (OFI)**](reports/PHASE1C_OFI.md) | idem 1, + OFI événementiel au meilleur niveau | Ajouter une information absente des barres 1 s (le flux intra-seconde) change-t-il la prévision - et le verdict ? | **Non, et c'est publié tel quel** : ΔR²_OOS(ret) apparié entre **−0.0006 et +0.0000**, apport non établi sur **0/5** symbole (seuil pré-enregistré ≥ 4/5), net à 2 bp inchangé (≤ 0.01 bp). Un résultat négatif bien démontré vaut un résultat. |
 
 ## Méthodologie - ce qui rend l'évaluation crédible
 
@@ -68,6 +69,11 @@ structurel. Détail, limites et chiffres complets :
   (dates, modèle, grille de frais, unité de bootstrap, graine) **et les règles de décision**
   sont commités avant d'exécuter quoi que ce soit - cf.
   [`configs/phase1_crypto_prereg.yaml`](configs/phase1_crypto_prereg.yaml).
+- **Apport d'une variable testé en apparié** : pour savoir si une feature ajoutée change la
+  prévision, les deux bras sont comparés sur les **mêmes journées** rééchantillonnées à
+  l'intérieur de chaque réplique - on calcule l'IC de la *différence*, pas deux IC séparés.
+  Et un résultat négatif est publié comme tel : cf.
+  [`reports/PHASE1C_OFI.md`](reports/PHASE1C_OFI.md).
 
 « Significatif » n'est pas « rentable ». L'écart entre les deux est le sujet du projet.
 
@@ -116,6 +122,12 @@ signal) :
 .\.venv\Scripts\python.exe scripts\crypto\crypto_lob.py --out experiments
 .\.venv\Scripts\python.exe scripts\crypto\bootstrap_signif.py    # IC95 par jour + verdicts
 .\.venv\Scripts\python.exe scripts\crypto\spread_regime.py       # regime de cout par annee
+
+# Phase 1c (OFI evenementiel ; apport non etabli). Dates lues dans le pre-enregistrement.
+.\.venv\Scripts\python.exe scripts\crypto\fetch_ofi.py                                  # 220 fichiers OFI
+.\.venv\Scripts\python.exe scripts\crypto\crypto_lob.py --out experiments_ofi --state ofi
+.\.venv\Scripts\python.exe scripts\crypto\bootstrap_signif.py --oos-dir experiments_ofi
+.\.venv\Scripts\python.exe scripts\crypto\paired_ofi.py          # comparaison APPARIEE base vs enrichi
 ```
 
 ## Structure
@@ -144,8 +156,8 @@ scripts/
   lobster/              bootstrap_signif, impact_curves, run_gru, tick_regime,
                         make_synthetic_lobster
   crypto/               download_binance, fetch_bybit_batch, crypto_lob
-configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1)
-reports/                les 5 write-ups + figures
+configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1, phase1c)
+reports/                les 6 write-ups + figures
 tests/                  tests anti-fuite, frontières de journée, impact
 ```
 
