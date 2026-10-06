@@ -10,7 +10,9 @@ Le résultat porteur : sur le carnet crypto réel, le world model trouve un sign
 sur BTC / ETH / SOL / XRP / DOGE, intervalle de confiance à 95 % qui exclut zéro sur **5
 symboles sur 5**). Une stratégie naïve dessus perd de l'argent **dès 2 bp de frais** sur les
 cinq, et sur XRP elle est déjà morte **à zéro frais**. Le signal est réel ; l'edge est un
-mirage.
+mirage. Ce constat ne tient pas à une faiblesse du modèle : deux re-tests pré-enregistrés -
+un modèle non linéaire, et une information de carnet plus profonde - ne le renversent pas
+(phases 1d et 1e, ci-dessous).
 
 ![Un edge réel qui est un mirage net de frais](reports/figures/crypto_lob_mirage.png)
 
@@ -36,7 +38,7 @@ SOL sur le jeu précédent. Le mirage ne repose donc sur aucune hypothèse de fr
 structurel. Détail, limites et chiffres complets :
 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md).
 
-## La thèse, démontrée sur six jeux de données
+## La thèse, démontrée sur six jeux de données - et deux re-tests qui ne la renversent pas
 
 | Phase | Données | Question | Verdict |
 |---|---|---|---|
@@ -46,6 +48,8 @@ structurel. Détail, limites et chiffres complets :
 | [**1b**](reports/PHASE1B.md) | LOBSTER | Action-conditionner le world model (impact de ses propres ordres) | Le plus petit ordre coûte déjà **1.7–3 bp** contre un edge prédictible **≤ 0.1 bp**. Mirage confirmé côté exécution. |
 | [**1 (crypto LOB)**](reports/PHASE1_CRYPTO.md) | 5 symboles × 44 journées, carnet Bybit L2, 19 M barres 1 s | Sait-on distinguer un vrai edge d'un mirage quand le signal existe ? | **Le cas d'école** : signal réel et significatif (R²_OOS 0.016–0.052, IC95 > 0 sur 5/5), backtest brut flatteur, net de coûts négatif partout dès 2 bp, et mort sans frais sur XRP. |
 | [**1c (OFI)**](reports/PHASE1C_OFI.md) | idem 1, + OFI événementiel au meilleur niveau | Ajouter une information absente des barres 1 s (le flux intra-seconde) change-t-il la prévision - et le verdict ? | **Non, et c'est publié tel quel** : ΔR²_OOS(ret) apparié entre **−0.0006 et +0.0000**, apport non établi sur **0/5** symbole (seuil pré-enregistré ≥ 4/5), net à 2 bp inchangé (≤ 0.01 bp). Un résultat négatif bien démontré vaut un résultat. |
+| [**1d (OFI, non linéaire)**](reports/PHASE1D_NL.md) | idem 1c, modèle MLP au lieu du linéaire, état identique | L'absence d'apport de l'OFI est-elle un artefact du modèle linéaire ? | **Non** : à état identique, un MLP ne tire rien de l'OFI (apport **0/5**) et le **dégrade significativement** sur SOL et XRP. La lecture « déjà contenue dans l'état » tient pour deux classes de modèles. |
+| [**1e (profondeur)**](reports/PHASE1E_PROFONDEUR.md) | idem 1, + déséquilibre des niveaux 2–10 et asymétrie de pente du carnet | L'information au-delà du meilleur niveau apporte-t-elle quelque chose ? | **Apport partiel, non promu** : ΔR² significativement positif sur BTC et ETH, **négatif** sur XRP et DOGE (**2/5**), et le signe s'inverse sous MLP. La réserve pré-enregistrée est à moitié réfutée par les données - publié tel quel. |
 
 ## Méthodologie - ce qui rend l'évaluation crédible
 
@@ -72,7 +76,10 @@ structurel. Détail, limites et chiffres complets :
 - **Apport d'une variable testé en apparié** : pour savoir si une feature ajoutée change la
   prévision, les deux bras sont comparés sur les **mêmes journées** rééchantillonnées à
   l'intérieur de chaque réplique - on calcule l'IC de la *différence*, pas deux IC séparés.
-  Et un résultat négatif est publié comme tel : cf.
+  Un garde-fou vérifie que les bras portent bien **les mêmes journées et la même cible**, et
+  il est testé pour qu'il puisse **échouer** ([`tests/test_paired_arms.py`](tests/test_paired_arms.py)) :
+  une garde qu'aucune donnée ne peut faire lever n'affiche pas une sécurité, elle affiche une
+  sécurité inexistante. Et un résultat négatif est publié comme tel : cf.
   [`reports/PHASE1C_OFI.md`](reports/PHASE1C_OFI.md).
 
 « Significatif » n'est pas « rentable ». L'écart entre les deux est le sujet du projet.
@@ -128,6 +135,12 @@ signal) :
 .\.venv\Scripts\python.exe scripts\crypto\crypto_lob.py --out experiments_ofi --state ofi
 .\.venv\Scripts\python.exe scripts\crypto\bootstrap_signif.py --oos-dir experiments_ofi
 .\.venv\Scripts\python.exe scripts\crypto\paired_ofi.py          # comparaison APPARIEE base vs enrichi
+
+# Phases 1d (OFI sous MLP) et 1e (profondeur du carnet) : un seul passage, plusieurs bras.
+# Le bras base+lineaire sert de controle d'integrite --check : il doit reproduire
+# experiments\crypto_lob_oos_<SYM>.npz a l'identique.
+.\.venv\Scripts\python.exe scripts\crypto\arm_eval.py --out experiments_arms
+.\.venv\Scripts\python.exe scripts\crypto\paired_arms.py        # delta R2 et delta net APPARIES, IC95, verdicts
 ```
 
 ## Structure
@@ -156,10 +169,11 @@ scripts/
   lobster/              bootstrap_signif, impact_curves, run_gru, tick_regime,
                         make_synthetic_lobster
   crypto/               download_binance, fetch_bybit_batch, crypto_lob, fetch_ofi,
-                        bootstrap_signif, spread_regime, paired_ofi
-configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1, phase1c)
-reports/                les 6 write-ups + figures
-tests/                  tests anti-fuite, frontières de journée, impact
+                        bootstrap_signif, spread_regime, paired_ofi,
+                        arm_eval (multi-bras), paired_arms (apparié multi-bras)
+configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1, phase1c, phase1d, phase1e)
+reports/                les 8 write-ups + figures
+tests/                  tests anti-fuite, frontières de journée, impact, appariement des bras
 ```
 
 ## Limites
@@ -169,7 +183,10 @@ tests/                  tests anti-fuite, frontières de journée, impact
 - **Phase 1 crypto** : 44 journées échelonnées (2023-01-20 → 2025-08-06, soit un peigne sur
   les 947 jours de l'archive Bybit, pas une série continue), 5 symboles, top-10 niveaux. Les
   17 premières journées restent en train : **2023 n'est jamais testé**, et l'out-of-sample ne
-  couvre que 27 journées (2024-02-06 → 2025-08-06).
+  couvre que 27 journées (2024-02-06 → 2025-08-06). Le flux brut niveau-par-niveau n'étant
+  pas archivé (seules les barres top-10 le sont), les dimensions de profondeur de la phase 1e
+  sont **reconstruites depuis des agrégats** : elles approximent l'information de carnet
+  profond, elles ne la constituent pas.
 - La stratégie économique testée est **taker** et naïve (signe, sans sizing ni filtre).
   L'angle maker/post-only est **explicitement non revendiqué** : il hérite d'un risque de
   non-exécution non modélisé ici. Le trancher demande un simulateur à impact natif.

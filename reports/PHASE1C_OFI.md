@@ -365,3 +365,72 @@ Sorties du bras enrichi : `experiments_ofi/` - `crypto_lob_1step.csv`,
 `crypto_lob_bootstrap.csv`, `crypto_lob_economic.csv`, `crypto_lob_rollout.csv`,
 `crypto_lob_nsample.json`, les `.npz` de prédictions OOS, `crypto_ofi_paired.csv` et les
 logs `paired_log.txt` / `bootstrap_log.txt`.
+
+## 8. Suites données à cette phase
+
+Ce rapport laissait deux lectures non tranchées pour expliquer l'absence d'apport de l'OFI
+(« information déjà contenue dans l'état » vs « information réelle mais hors de portée du
+modèle linéaire »), et une limite explicite (l'état ne regarde que le meilleur niveau).
+Deux phases ont été pré-enregistrées puis exécutées pour les traiter.
+
+### 8.1 - Phase 1d : re-test sous modèle non linéaire
+
+Détail complet : [`PHASE1D_NL.md`](PHASE1D_NL.md).
+
+À état **strictement identique**, un MLP (2 couches 64×32, hyperparamètres figés) ne tire
+pas de l'OFI ce que le linéaire manquait. **`apport_non_lineaire` : 0/5**, contre 0/5 pour le
+contrôle linéaire - qui reproduit les ΔR² de la section 4.3 **au chiffre près** (intervalle
+`[−0.00062, +0.00004]`), ce qui valide la comparabilité des deux phases.
+
+| Symbole | `ofi_mlp − base_mlp` | IC95 |
+|---|---|---|
+| BTCUSDT | −0.00197 | [−0.00591, 0.00165] |
+| ETHUSDT | −0.00110 | [−0.00366, 0.00155] |
+| SOLUSDT | −0.00470 | [−0.00733, −0.00065] |
+| XRPUSDT | −0.02981 | [−0.04143, −0.01477] |
+| DOGEUSDT | −0.06019 | [−0.09662, 0.00663] |
+
+Non seulement le gain n'apparaît pas, mais sur **SOL et XRP l'IC95 est entièrement négatif** :
+sous MLP, l'OFI **dégrade** significativement. La lecture « l'information au meilleur niveau
+est déjà contenue dans les barres 1 s » sort **renforcée** : elle vaut maintenant pour deux
+classes de modèles. La dimension `ofi` reste pourtant l'une des plus prévisibles de l'état
+(R² 1-step ≈ 0.39–0.47) - elle est simplement sans pouvoir prédictif sur le rendement.
+
+### 8.2 - Phase 1e : profondeur du carnet au-delà du meilleur niveau
+
+Détail complet : [`PHASE1E_PROFONDEUR.md`](PHASE1E_PROFONDEUR.md).
+
+Deux dimensions ajoutées (`imb_deep`, déséquilibre des niveaux 2–10 ; `slope_asym`,
+asymétrie de pente du carnet), reconstruites depuis les agrégats faute de flux brut
+niveau-par-niveau. **`apport_profondeur` : 2/5** (bras primaire linéaire) → **apport
+partiel, non promu en découverte** (le pré-enregistrement exige ≥ 4/5). Le bras MLP ne
+confirme rien (**0/5**).
+
+| Symbole | `deep_linear − base_linear` | IC95 |
+|---|---|---|
+| BTCUSDT | **+0.00100** | [0.00056, 0.00165] |
+| ETHUSDT | **+0.00039** | [0.00022, 0.00062] |
+| SOLUSDT | +0.00001 | [−0.00017, 0.00033] |
+| XRPUSDT | **−0.01342** | [−0.03277, −0.00307] |
+| DOGEUSDT | **−0.00462** | [−0.00647, −0.00281] |
+
+Deux points de méthode, tous deux publiés tels quels :
+
+- **Le signe s'inverse entre classes de modèles.** Sur BTC, la profondeur aide le linéaire
+  (+0.001) et nuit au MLP (−0.006). Un signal qui dépend ainsi du modèle n'est pas robuste.
+- **La réserve pré-enregistrée a été à moitié réfutée.** Le pré-enregistrement annonçait
+  `slope_asym` comme le seul axe orthogonal à l'état existant ; les données le montrent
+  fortement corrélé à `imb1` (0.685–0.834). `imb_deep` est bien quasi-redondant, mais avec
+  `depth_imb` (r jusqu'à 0.98) et non avec `imb1`.
+
+Le mécanisme est identifié : les deux dimensions sont quasi dégénérées sur les alts
+(variance brute 0.004–0.062, contre 0.14–0.36 sur BTC/ETH). Les gains significatifs sont là
+où la variance existe, les dégradations là où elle est quasi nulle.
+
+### 8.3 - Ce que les deux phases laissent debout
+
+Sur les six combinaisons bras × modèle testées au total, **aucune ne franchit zéro** en net
+à 2 bp : l'IC95 reste entièrement négatif partout. Ni l'OFI événementiel, ni la profondeur
+du carnet, ni une classe de modèle non linéaire ne font basculer le constat central de la
+phase 1c - la prévision 1-step du rendement au meilleur niveau reste **sous les coûts de
+transaction**.
