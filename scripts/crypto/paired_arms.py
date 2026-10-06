@@ -43,13 +43,15 @@ def load_arm(sym: str) -> dict:
 def assert_apparies(sym: str, npz: dict, tag_gain: str, tag_ref: str) -> None:
     """Les deux bras doivent porter EXACTEMENT le meme echantillon.
 
-    Les sommes de y^2 par jour doivent coincider : c'est l'empreinte de l'echantillon
-    teste. Un decalage (colonne qui ferait disparaitre ou glisser des lignes) produirait
-    une comparaison silencieusement fausse -> on echoue bruyamment.
+    L'empreinte est la somme des y^2 PAR JOUR, calculee SEPAREMENT pour chaque bras depuis
+    sa propre cible (cf. `arm_eval._per_day`). Deux bras nourris d'echantillons differents
+    - une colonne qui ferait glisser ou disparaitre des lignes - produisent des sommes
+    differentes, et la comparaison serait silencieusement fausse : on echoue bruyamment.
+
+    Cette garde n'a de valeur que parce que `_per_day` reduit chaque bras depuis ses
+    propres donnees. Comparer deux sommes ecrites par la meme expression serait une
+    verification morte, qui ne pourrait jamais echouer.
     """
-    for k in ("y", "day"):
-        if len(npz[k]) != int(npz["n_oos"]):
-            raise SystemExit(f"[{sym}] {k} : {len(npz[k])} vs n_oos={int(npz['n_oos'])}.")
     if not np.array_equal(npz[f"sse_b_{tag_gain}"], npz[f"sse_b_{tag_ref}"]):
         raise SystemExit(f"[{sym}] {tag_gain} et {tag_ref} n'ont pas les memes journees "
                          f"d'echantillons (sommes de y^2 differentes) : non appariables.")
@@ -146,9 +148,20 @@ def main() -> None:
     n_boot, seed = int(boot_cfg["n_boot"]), int(boot_cfg["seed"])
     blk = int(boot_cfg["variante_robustesse"]["longueur_bloc_jours"])
     fees = [float(f) for f in cfg_d["evaluation"]["frais_bp"]]
+    # Les regles `mirage` et `bascule` des deux pre-enregistrements portent sur le net a
+    # 2 bp. La valeur est LUE ici et refusee si le preregistrement ne la contient plus,
+    # plutot qu'ecrite en dur au fond d'un appel : une divergence passerait sinon inapercue.
+    FEE_RULE = 2.0
+    if FEE_RULE not in fees:
+        raise SystemExit(f"les regles mirage/bascule portent sur {FEE_RULE} bp, absent de "
+                         f"evaluation.frais_bp = {fees} : le preregistrement a change.")
     symbols = cfg_d["donnees"]["symboles"]
     if args.symbols:
         symbols = [s for s in symbols if s in args.symbols]
+    # Les regles chiffrees (>= 4 sur 5) ne valent que sur le jeu COMPLET. Sur un run
+    # partiel, les appliquer afficherait des libelles "/5" faux : on les marque
+    # inapplicables plutot que de les rendre muets.
+    complet = set(symbols) == set(cfg_d["donnees"]["symboles"])
 
     lines: list[str] = []
 
@@ -168,7 +181,7 @@ def main() -> None:
             rows.append(paired_compare(sym, npz, g, mg, r, mr, fees, n_boot, seed, blk))
         for arm in ("base", "ofi", "deep"):
             for model in ("linear", "mlp"):
-                arm_rows.append(arm_net(sym, npz, arm, model, 2.0, n_boot, seed))
+                arm_rows.append(arm_net(sym, npz, arm, model, FEE_RULE, n_boot, seed))
 
     df = pd.DataFrame(rows)
     arm_df = pd.DataFrame(arm_rows)
@@ -208,6 +221,8 @@ def main() -> None:
         return int((sub["dlo"] > 0).sum())
 
     def verdict_apport(n: int) -> str:
+        if not complet:
+            return f"NON APPLICABLE (run partiel : {n}/{len(symbols)} symbole(s))"
         if n >= 4:
             return f"APPORTE UNE INFORMATION REELLE ({n}/{len(symbols)} >= 4/5)"
         if n >= 1:
@@ -215,13 +230,19 @@ def main() -> None:
         return "APPORT NON ETABLI (plancher renforce)"
 
     def mirage_verdict(arm: str, model: str) -> str:
-        sub = arm_df[(arm_df["arm_model"] == f"{arm}_{model}") & (arm_df["fee_bp"] == 2.0)]
+        if not complet:
+            return "NON APPLICABLE (run partiel)"
+        sub = arm_df[(arm_df["arm_model"] == f"{arm}_{model}")
+                     & (arm_df["fee_bp"] == FEE_RULE)]
         n_bad = int((~(sub["net_hi"] < 0)).sum())
         return ("MIRAGE CONFIRME (net a 2 bp entierement < 0 partout)" if n_bad == 0
                 else f"MIRAGE NON confirme au sens strict ({n_bad}/{len(sub)} symbole(s))")
 
     def bascule_verdict(arm: str, model: str) -> str:
-        sub = arm_df[(arm_df["arm_model"] == f"{arm}_{model}") & (arm_df["fee_bp"] == 2.0)]
+        if not complet:
+            return "NON APPLICABLE (run partiel)"
+        sub = arm_df[(arm_df["arm_model"] == f"{arm}_{model}")
+                     & (arm_df["fee_bp"] == FEE_RULE)]
         n_pos = int((sub["net_lo"] > 0).sum())
         return (f"BASCULE ({n_pos} symbole(s), borne basse > 0 a 2 bp)" if n_pos
                 else "AUCUNE BASCULE (aucune borne basse > 0 a 2 bp)")

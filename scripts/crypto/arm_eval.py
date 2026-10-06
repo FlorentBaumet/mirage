@@ -107,6 +107,7 @@ def eval_symbol(sym: str, S_days: list[np.ndarray], days, spread,
     les trois bras portent donc exactement les memes lignes, dans le meme ordre.
     """
     rows1, arrays = [], {}
+    y_ref = None
     for arm, idx in arms.items():
         idx = np.asarray(idx)
         Xs, Ys = [], []
@@ -116,6 +117,16 @@ def eval_symbol(sym: str, S_days: list[np.ndarray], days, spread,
             Ys.append(Y)
         Xa, Ya = np.vstack(Xs), np.vstack(Ys)
         del Xs, Ys
+        # APPARIEMENT, verifie la OU il a un sens. Chaque bras vient d'etre supervise a
+        # partir de SES colonnes : comparer les cibles ici teste donc reellement
+        # l'echantillon. Le faire a la relecture du .npz ne testerait rien, puisque ce
+        # fichier ne stocke qu'UNE cible (celle du bras de reference) - c'est exactement
+        # ce qui rendait l'ancienne garde tautologique.
+        if y_ref is None:
+            y_ref = Ya[:, RET_IDX]
+        elif not np.array_equal(y_ref, Ya[:, RET_IDX]):
+            raise SystemExit(f"[{sym}] le bras '{arm}' ne porte pas la meme cible que le "
+                             f"premier bras construit : echantillons non appariables.")
         dims = ARM_DIMS[arm]
         for mname in models:
             P, A, D, SP = [], [], [], []
@@ -148,16 +159,30 @@ def eval_symbol(sym: str, S_days: list[np.ndarray], days, spread,
 
 
 def _per_day(npz: dict, arrays: dict) -> None:
-    """Reduit chaque (bras, modele) a des SOMMES PAR JOUR, suffisantes au bootstrap."""
+    """Reduit chaque (bras, modele) a des SOMMES PAR JOUR, suffisantes au bootstrap.
+
+    Chaque entree est reduite depuis SA PROPRE cible et SES PROPRES journees
+    (`arrays[(arm, mname)]["y"]` / `["day"]`), jamais depuis celles d'un autre bras.
+    C'est ce qui donne a `sse_b_{tag}` la valeur d'une EMPREINTE : si un bras portait un
+    echantillon decale, sa somme de y^2 differerait et `paired_arms.assert_apparies`
+    echouerait. Reduire tous les bras avec la cible de reference - ce que faisait la
+    version precedente - rendait la garde tautologique, puisqu'elle comparait deux fois
+    le meme calcul.
+    """
     ref = arrays[("base", "linear")]
-    y, day = ref["y"], ref["day"]
-    n_days = int(day.max()) + 1
-    counts = np.bincount(day, minlength=n_days).astype(float)
+    y_ref, day_ref = ref["y"], ref["day"]
+    n_days = int(day_ref.max()) + 1
+    counts = np.bincount(day_ref, minlength=n_days).astype(float)
     pool = np.where(counts > 0)[0]
-    npz.update({"n_days": len(pool), "n_oos": len(y), "day_pool": pool,
-                "count": counts[pool], "y": y, "day": day})
+    npz.update({"n_days": len(pool), "n_oos": len(y_ref), "day_pool": pool,
+                "count": counts[pool], "y": y_ref, "day": day_ref})
     for (arm, mname), d in arrays.items():
         tag = f"{arm}_{mname}"
+        y, day = d["y"], d["day"]
+        c = np.bincount(day, minlength=n_days)
+        if not np.array_equal(np.where(c > 0)[0], pool):
+            raise SystemExit(f"[_per_day] le bras {tag} ne porte pas les memes journees "
+                             f"que base_linear : non appariable.")
         npz[f"sse_b_{tag}"] = np.bincount(day, weights=y**2, minlength=n_days)[pool]
         npz[f"sse_m_{tag}"] = np.bincount(day, weights=(y - d["pred"]) ** 2,
                                           minlength=n_days)[pool]
