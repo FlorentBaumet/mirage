@@ -208,10 +208,14 @@ def test_causal_paths_est_le_rollout_et_s_annule_en_fin_de_journee():
     assert np.array_equal(R[:, 0], rhat)                       # premier pas = rhat, au bit pres
     assert np.array_equal(C[:, 0], half + 2.0 * 1e-4)          # cout courant = demi-spread + frais
 
-    # la journee 0 ne fait que 6 barres : aucun pas au-dela de sa fin
-    assert np.all(R[:6, 6:] == 0.0)
-    assert np.all(C[:6, 6:] == 0.0)
-    reste = m - 6
-    if reste < H:
-        assert np.all(R[6:, reste:] == 0.0)
-        assert np.all(C[6:, reste:] == 0.0)
+    # La journee 0 ne fait que 6 barres : la ligne i ne dispose plus que de 6 - i pas. Le
+    # masque est donc un ESCALIER (6, 5, 4, 3, 2, 1), pas un troncon final unique : la
+    # derniere ligne de la journee n'a plus qu'un seul pas utilisable.
+    for i, reste in enumerate((6, 5, 4, 3, 2, 1)):
+        assert np.all(R[i, reste:] == 0.0), i
+        assert np.all(C[i, reste:] == 0.0), i
+    # ... la journee 1, plus longue que l'horizon, n'est touchee que sur ses H - 1 dernieres
+    # lignes : le masque ne mange pas la journee, il n'en mange que la fin.
+    assert not np.any(R[6:m - H, :] == 0.0)
+    assert not np.any(C[6:m - H, :] == 0.0)
+    assert np.all(R[m - 1, 1:] == 0.0)          # derniere ligne : un seul pas utilisable

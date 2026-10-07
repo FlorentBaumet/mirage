@@ -175,7 +175,7 @@ def causal_paths(model, X: np.ndarray, half: np.ndarray, fee: float, horizon: in
     (persistance). Choix fige : le plus simple, sans fuite, sans degre de liberte.
 
     R et C sont mis a ZERO au-dela de la fin de la journee de t : un plan ne traverse jamais
-    une nuit, et l'agent connait le calendrier (ce n'est pas une fuite).
+    une nuit, et l'agent connait le calendrier (ce n'est pas une fuite). Voir `mask_day_end`.
     """
     X = np.asarray(X)
     n = len(X)
@@ -185,13 +185,42 @@ def causal_paths(model, X: np.ndarray, half: np.ndarray, fee: float, horizon: in
         win = np.ascontiguousarray(X[s:e], float).reshape(-1, lookback, d)
         R[s:e] = rollout(model, win, horizon)[:, :, ret_idx]
     C = np.repeat((np.asarray(half, float) + fee * 1e-4)[:, None], horizon, axis=1)
+    mask_day_end(R, days)
+    mask_day_end(C, days)
+    return R, C
 
+
+def mask_day_end(A: np.ndarray, days: np.ndarray) -> np.ndarray:
+    """R = C = 0 au-dela de la fin du jour de CHAQUE ligne. Mute `A` et le renvoie.
+
+    A est (n, H) : la ligne i d'un jour de longueur L voit ses pas `L - i` a `H - 1` se
+    derouler apres la fin du jour. Ils sont annules. Le masque est donc en ESCALIER, ligne
+    par ligne, et non un simple troncon final : au sein d'une journee, la derniere ligne ne
+    dispose que d'un pas, l'avant-derniere de deux, et ainsi de suite.
+
+    Le decalage porte sur la FENETRE de la ligne, pas sur la ligne elle-meme : la fenetre de
+    la ligne i est centree sur la barre de decision, qui est elle-meme a `L - i - 1` barres
+    de la fin du jour. Le plan fait a la barre t ne peut donc engager que les pas qui
+    restent dans la journee de t.
+
+    Propriete dont depend le harnais de la phase 2b : masquer avec un H donne, puis decouper
+    en `[:, :h]`, donne exactement le masque d'un tableau de largeur h. Le rollout peut donc
+    etre calcule UNE fois a H max et decoupe, sans recalcul.
+    """
+    A = np.asarray(A)
+    H = A.shape[1]
+    days = np.asarray(days)
+    n = len(days)
     brk = np.flatnonzero(days[1:] != days[:-1]) + 1 if n > 1 else np.zeros(0, dtype=int)
     starts = np.concatenate([[0], brk])
     ends = np.concatenate([brk, [n]])
+    cols = np.arange(H)[None, :]
     for s, e in zip(starts, ends, strict=True):
-        reste = int(e - s)
-        if reste < horizon:
-            R[s:e, reste:] = 0.0
-            C[s:e, reste:] = 0.0
-    return R, C
+        s, e = int(s), int(e)
+        L = e - s
+        # ligne i : premier pas hors journee = L - i. Pour une journee plus longue que
+        # l'horizon, les premieres lignes ne sont pas touchees du tout : la comparaison
+        # `cols >= L - i` est fausse sur toute la largeur de la ligne, et c'est exact, pas
+        # un cas particulier a traiter a part.
+        A[s:e] = np.where(cols >= (L - np.arange(L))[:, None], 0.0, A[s:e])
+    return A
