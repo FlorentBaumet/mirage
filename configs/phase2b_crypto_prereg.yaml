@@ -1,0 +1,176 @@
+# Pré-enregistrement - Phase 2b crypto : PLANIFICATEUR CAUSAL ET RE-MESURE DE LA PHASE 2
+#
+# FIGÉ et COMMITÉ AVANT toute exécution du planificateur causal (invariant I3).
+#
+# Motif : le planificateur de la Phase 2 (`plan_by_run` sur la série rhat) consomme à la
+# barre t les prédictions rhat[t+1..t+H-1], faites plus tard ; rhat[t+1] est calculée sur
+# une fenêtre qui contient l'état Y[t], donc le rendement que la position p_t encaisse.
+# Le verdict `edge_reel` de la Phase 2 est suspendu jusqu'à la présente re-mesure.
+#
+# L'agent de la Phase 2 est un planificateur à horizon glissant : à la barre t il
+# optimise `POS[j]*rhat[t] + F[j, t+1]`, où F[:, t+1] est la valeur des pas suivants
+# calculée sur rhat[t+1 .. t+H-1]. Or `make_supervised` aligne X[k] = états k..k+L-1 et
+# Y[k] = état k+L : rhat[t+1] est donc calculée sur une fenêtre qui CONTIENT Y[t].
+# Un planificateur honnête à t ne dispose que des prévisions FAITES À t des rendements
+# r_t, r_{t+1}, ..., r_{t+H-1} : celles d'un rollout du world model depuis la fenêtre de t.
+
+meta:
+  nom: phase2b_crypto_causal
+  fige_le: "2026-10-08"
+  phase_corrigee: "configs/phase2_crypto_prereg.yaml"
+  questions:
+    principale: >
+      Un agent qui planifie à H = 10 dans le world model, en n'utilisant QUE les
+      prévisions faites à t (rollout), a-t-il un net réel > 0 à 2 bp ?
+    fuite: >
+      Quelle part du net publié de la Phase 2 est due à la fuite ?
+      Mesure : Δnet apparié (agent_fuite@2 - agent_causal@2).
+    A2: >
+      Un monde entraîné sur le rendement cumulé à +10 s a-t-il un R²_OOS > 0, et l'agent
+      direct fait-il mieux que l'agent causal par rollout (EXPLORATOIRE) ?
+    B: >
+      L'écart d'exploitation négatif de la Phase 2 disparaît-il avec un planificateur
+      causal ?
+
+deja_observe:
+  # Déclaré pour que personne ne puisse le confondre avec un résultat pré-enregistré.
+  # Contrôle lecture seule sur l'artefact publié experiments/crypto_lob_oos_<SYM>.npz,
+  # frais 2 bp, H = 10, effectué le 2026-10-07 AVANT la rédaction de ce fichier.
+  constats:
+    - "corr(rhat[t+1], y[t]) = +0.2680 (DOGE), +0.3951 (BTC) ; corr(rhat[t], y[t]) = +0.1455, +0.2285"
+    - "agent publié reproduit au chiffre près : net réel +0.0905 (DOGE), +0.0213 (BTC) bp/barre"
+    - "variante 'rhat[t] plat sur H' à 2 bp, net/brut : DOGE -0.8720/+0.2464, BTC -0.3484/+0.1341"
+    - "agent H = 1 de la Phase 2 (légitime, F = 0 donc aucune fuite) : IC95 contient 0 sur 5/5"
+    - "diagnostics de la Phase 2 : le bruit perd 5/5, la dérive est nulle exactement, le
+       brut directionnel de l'agent est INFÉRIEUR à celui du myope sur 5/5, et l'écart
+       d'exploitation est négatif et significatif sur 5/5"
+  jamais_calcule: [agent_causal, agent_direct, journees_neuves]
+
+donnees:
+  reference_dates: "configs/phase1c_crypto_prereg.yaml -> donnees.dates (44 dates)"
+  source: "Bybit L2, barres 1 s top-10 (déjà sur disque, data/raw/crypto_lob)"
+  symboles: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT]
+  couverture_exigee: "44 x 5 couples ; un couple manquant est un ÉCHEC BLOQUANT"
+
+monde:
+  # INCHANGÉ : celui des phases 1 à 2.
+  classe: LinearWM
+  etat: [ret, spread_rel, imb1, depth_imb, micro_dev]
+  lookback: 16
+  walk_forward: {n_folds: 5, min_train_frac: 0.4, scheme: expanding, embargo: 16}
+  cible: "rendement du mid à +1 s (RET_IDX)"
+
+agent_causal:
+  action: "position dans {-1, 0, +1}, tenue une barre, sans impact"
+  planificateur: "programmation dynamique EXACTE, plan_positions_causal"
+  horizon_H: 10
+  previsions: >
+    R[t, k] = composante ret du rollout autorégressif du world model du fold de t, depuis
+    la fenêtre de t et elle seule, k = 0..H-1. R[t, 0] = rhat[t] au bit près.
+  couts_prevus: "C[t, k] = demi-spread mesuré à t + frais (persistance)"
+  couts_payes: "demi-spread mesuré à la barre de chaque changement effectif + frais"
+  fin_de_journee: "R = C = 0 au-delà de la fin du jour de t ; remise à plat chaque jour"
+  replanification: "à chaque barre, depuis la position réellement exécutée"
+  robustesse_H: [1, 5, 20]   # diagnostics, jamais un réglage
+
+bras:
+  myope: "sign(rhat) - contrôle au bit près vs experiments/crypto_lob_oos_<SYM>.npz"
+  agent_fuite: "plan_by_run(rhat, c, 10) - le bras publié, recalculé pour l'appariement"
+  agent_causal: "le bras PRIMAIRE"
+  agent_plat: "rhat[t] tenu plat sur H - diagnostic déjà observé, jamais primaire"
+  plat: "p = 0"
+  oracle: "sign(y)"
+  clairvoyant: "plan_positions sur y (information parfaite, par conception)"
+
+evaluation:
+  frais_bp: [0.0, 2.0, 5.5]
+  frais_primaire: 2.0
+  bootstrap: {unite: jour, n_boot: 2000, seed: 0, variante_blocs_jours: 3, appariement: "mêmes jours"}
+
+regles:
+  causalite_verifiee:
+    definition: "tests 1 à 6 de tests/test_plan_causal.py verts AVANT tout run"
+    echec: "aucun résultat calculé"
+  integrite:
+    definition: >
+      myope reproduit experiments/ au bit près ; agent_fuite reproduit le net publié de la
+      Phase 2 à 1e-9
+    echec: "bug, aucun résultat publié"
+  planificateur_coherent:
+    definition: "net imaginé agent_causal@2 >= net imaginé myope@2"
+    seuil: "5/5 (sinon bug)"
+  edge_reel_causal:
+    definition: "borne basse IC95 du net réel agent_causal@2 > 0"
+    seuil: ">= 4/5"
+    primaire: true
+  agent_causal_bat_le_myope:
+    definition: "borne basse IC95 apparié (agent_causal@2 - myope) > 0"
+    seuil: ">= 4/5"
+  fuite_significative:
+    definition: "borne basse IC95 apparié (agent_fuite@2 - agent_causal@2) > 0"
+    seuil: ">= 4/5"
+    lecture: "si OUI, le net publié de la Phase 2 est attribué (au moins en partie) à la fuite"
+  exploitation_du_modele:
+    definition: "net imaginé agent_causal@2 > 0 ET net réel <= 0"
+    lecture: "LA question de la spec, enfin posée sans fuite"
+  # Ne s'appliquent que si edge_reel_causal est OUI (sinon rien à attribuer) :
+  bruit_perd:
+    definition: "net réel observé > maximum de 39 permutations intra-jour des lignes de R"
+    seuil: ">= 4/5"
+  derive_nulle:
+    definition: "IC95 contribution de dérive contient 0 ET borne basse timing > 0"
+    seuil: ">= 4/5"
+
+regles_A2:   # EXPLORATOIRE : n'altère jamais le verdict principal
+  cible: "yH = somme_{j=k}^{k+9} Y[j, ret] dans le jour ; H-1 derniers échantillons exclus"
+  embargo: 26
+  echantillon: "OOS Phase 2 privé des H-1 dernières barres par jour ; agent_causal recalculé dessus"
+  agent_direct: "plan_positions_causal avec R[t, k] = yH_pred(t)/H"
+  signal_horizon: {definition: "borne basse IC95 R²_OOS(yH) > 0", seuil: ">= 4/5"}
+  direct_bat_rollout: {definition: "borne basse IC95 apparié Δnet(agent_direct@2 - agent_causal_A2@2) > 0", seuil: ">= 4/5"}
+
+regles_B:    # DIAGNOSTIC
+  prediction: "IC95 de l'écart d'exploitation de agent_causal@2 contient 0 ou est > 0, sur >= 4/5"
+  calibration: "pente beta de y sur pred (myope), IC95 par jour ; pente du décile supérieur de |pred|"
+  fait: "alpha / n_train par fold, cité en chiffres"
+
+echecs_et_lectures:
+  - "edge_reel_causal NON : la Phase 2 n'a PAS de résultat positif. Le projet conclut que le
+     mirage tient aussi au niveau de l'agent. Erratum définitif de la Phase 2."
+  - "edge_reel_causal OUI : le résultat positif survit à la correction ; il reste à le
+     répliquer sur journées neuves (étape 2b-5) avant de l'affirmer."
+  - "fuite_significative OUI et edge_reel_causal NON : le résultat publié était un
+     artefact de fuite. C'est la conclusion à écrire en tête du rapport."
+
+extension_88_jours:
+  # INCONDITIONNELLE : décidée le 2026-10-07 avant tout résultat causal.
+  regle_dates_neuves: >
+    Pour chaque paire de dates publiées consécutives (d_i, d_i+1) : d_i + floor((d_i+1 - d_i)/2)
+    jours ; plus 2025-08-13 (milieu entre 2025-08-06 et la fin d'archive 2025-08-20).
+    44 dates disjointes des 44 publiées ; la liste littérale est vérifiée par un test.
+  dates_neuves: [2023-01-31, 2023-02-22, 2023-03-17, 2023-04-08, 2023-05-01, 2023-05-23,
+                 2023-06-15, 2023-07-07, 2023-07-30, 2023-08-21, 2023-09-13, 2023-10-05,
+                 2023-10-28, 2023-11-19, 2023-12-11, 2024-01-03, 2024-01-25, 2024-02-17,
+                 2024-03-10, 2024-04-02, 2024-04-24, 2024-05-17, 2024-06-08, 2024-07-01,
+                 2024-07-23, 2024-08-14, 2024-09-06, 2024-09-28, 2024-10-21, 2024-11-12,
+                 2024-12-05, 2024-12-27, 2025-01-19, 2025-02-10, 2025-03-05, 2025-03-27,
+                 2025-04-19, 2025-05-04, 2025-05-15, 2025-05-27, 2025-06-10, 2025-06-28,
+                 2025-07-23, 2025-08-13]
+  couverture_exigee: "88 x 5 couples, barres ET OFI ; un couple manquant est un ÉCHEC BLOQUANT"
+  protocole: "identique à agent_causal ci-dessus, walk-forward sur l'union triée"
+  sous_echantillons:
+    neuf: "jours OOS dans dates_neuves (~27) - PRIMAIRE, confirmatoire"
+    union: "tous les jours OOS (~53) - puissance"
+    ancien: "jours OOS dans les dates publiées - descriptif"
+  regles: >
+    edge_reel_causal, agent_causal_bat_le_myope, exploitation_du_modele (et bruit_perd,
+    derive_nulle si edge_reel_causal OUI), évaluées sur `neuf` puis sur `union`, mêmes seuils.
+  lecture: >
+    Un résultat 44 jours et un résultat `neuf` divergents sont publiés tous les deux ;
+    seul un résultat qui tient sur `neuf` peut être affirmé.
+
+interdits:
+  - "changer H, les frais, les seuils, le coût prévu ou la méthode de rollout après avoir vu un résultat"
+  - "annuler l'extension 88 jours ou changer ses dates après avoir vu un résultat"
+  - "promouvoir agent_plat ou agent_direct en bras primaire"
+  - "retirer un symbole ou une journée"
