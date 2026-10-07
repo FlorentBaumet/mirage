@@ -50,12 +50,49 @@ def ofi_path_for(pf: str) -> str:
     return os.path.join(OFI_DIR, os.path.basename(pf).replace("_1s_book.pkl", "_ofi.pkl"))
 
 
-def load_cached() -> dict[str, list[str]]:
-    """{symbole: [chemins .pkl triés par date]}"""
+# Les 44 journees de l'echantillon publie (configs/phase1c_crypto_prereg.yaml, inchangees
+# depuis la phase 1). Elles sont NOMMEES ici parce que `data/raw/crypto_lob` en contient
+# d'autres depuis l'extension 2b : sans liste explicite, deposer 44 journees de plus
+# changerait en silence l'echantillon de TOUS les scripts existants (phases 1 a 2), et
+# leurs controles d'integrite tomberaient pour une raison qui n'a rien a voir avec le code.
+# tests/test_phase2b.py verifie que cette liste est bien celle du pre-enregistrement.
+DATES_PUBLIEES_1C = (
+    "2023-01-20", "2023-02-11", "2023-03-06", "2023-03-28", "2023-04-20", "2023-05-12",
+    "2023-06-04", "2023-06-26", "2023-07-19", "2023-08-10", "2023-09-02", "2023-09-24",
+    "2023-10-17", "2023-11-08", "2023-11-30", "2023-12-23", "2024-01-14", "2024-02-06",
+    "2024-02-28", "2024-03-22", "2024-04-13", "2024-05-06", "2024-05-28", "2024-06-20",
+    "2024-07-12", "2024-08-03", "2024-08-26", "2024-09-17", "2024-10-10", "2024-11-01",
+    "2024-11-24", "2024-12-16", "2025-01-08", "2025-01-30", "2025-02-22", "2025-03-16",
+    "2025-04-08", "2025-04-30", "2025-05-08", "2025-05-22", "2025-06-02", "2025-06-18",
+    "2025-07-09", "2025-08-06",
+)
+
+
+def date_of(pf: str) -> str:
+    """Journee d'un cache, lue dans son nom de fichier."""
+    return os.path.basename(pf)[:10]
+
+
+def load_cached(dates=None) -> dict[str, list[str]]:
+    """{symbole: [chemins .pkl triés par date]}, restreint aux journees demandees.
+
+    `dates` : iterable de "AAAA-MM-JJ" ; None -> les 44 journees publiees (DATES_PUBLIEES_1C).
+    Une journee demandee et absente du disque est une ERREUR : un echantillon incomplet
+    passerait sinon pour un echantillon complet, et les chiffres ne seraient plus ceux de
+    l'echantillon annonce.
+    """
+    wanted = set(DATES_PUBLIEES_1C if dates is None else dates)
     out: dict[str, list[str]] = {}
+    vues: set[str] = set()
     for pf in sorted(glob.glob(os.path.join(DIR, "*_1s_book.pkl"))):
         m = re.match(r"(\d{4}-\d{2}-\d{2})_([A-Z]+)_1s_book", os.path.basename(pf))
-        out.setdefault(m.group(2), []).append(pf)
+        if m.group(1) in wanted:
+            out.setdefault(m.group(2), []).append(pf)
+            vues.add(m.group(1))
+    manquantes = wanted - vues
+    if manquantes:
+        raise SystemExit(f"Journees demandees absentes de {DIR} : "
+                         f"{', '.join(sorted(manquantes))}.")
     return {k: sorted(v) for k, v in out.items()}
 
 

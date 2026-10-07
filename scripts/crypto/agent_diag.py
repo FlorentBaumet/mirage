@@ -147,9 +147,15 @@ def shift_within_days(rng, v: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 # ---------------------------------------------------------------------------------------
 
-def control_myope(sym: str, blk_my: dict, count: np.ndarray, fee: float) -> None:
-    """CONTROLE : mon bras myope doit valoir celui du harnais principal (CSV du run)."""
-    cf = os.path.join(OUT, "agent_net.csv")
+def control_myope(sym: str, blk_my: dict, count: np.ndarray, fee: float,
+                  net_csv: str | None = None) -> None:
+    """CONTROLE : mon bras myope doit valoir celui du harnais principal (CSV du run).
+
+    `net_csv` permet de designer le CSV d'un AUTRE harnais (phase 2b). Le controle porte
+    alors sur ses lignes myope, qui doivent rester celles du bras publie : c'est ce qui
+    autorise un diagnostic a tourner sur des tableaux reconstruits ailleurs.
+    """
+    cf = net_csv or os.path.join(OUT, "agent_net.csv")
     if not os.path.exists(cf):
         print("  [controle] agent_net.csv absent : controle saute.", flush=True)
         return
@@ -169,16 +175,31 @@ def control_myope(sym: str, blk_my: dict, count: np.ndarray, fee: float) -> None
                          "harnais principal. C'EST UN BUG.")
 
 
-def diag_symbol(sym: str, k_perm: int, k_shift: int) -> tuple[list, list, list]:
-    z = load_published(sym)
-    rhat = np.asarray(z["pred"], float)
-    rtrue = np.asarray(z["y"], float)
-    half = np.asarray(z["half"], float)
-    dd = np.asarray(z["day"]).astype(int)
+def diag_arrays(sym: str, rhat: np.ndarray, rtrue: np.ndarray, half: np.ndarray,
+                dd: np.ndarray, planner, k_perm: int, k_shift: int,
+                x: np.ndarray | None = None, net_csv: str | None = None,
+                ) -> tuple[list, list, list]:
+    """Les trois instruments, sur des tableaux quelconques : aucune lecture de fichier.
+
+    `planner(X, c, dd, horizon) -> positions` est le SEUL point qui distingue le bras publie
+    du bras causal du pre-enregistrement 2b :
+
+      - bras publie : `planner = plan_by_run`, `x = None` (donc `x = rhat`). Le bruit
+        permute la SERIE des predictions a un pas.
+      - bras causal  : `x` est la matrice des chemins R (n, H) et `planner` l'applique a
+        `plan_positions_causal`. Le bruit permute alors les LIGNES de R : chaque chemin
+        reste un chemin coherent (une trajectoire du modele), seul son appariement au
+        marche est detruit. C'est la definition de la regle `bruit_perd` du prereg 2b.
+
+    `rhat` reste la prevision a UN pas dans les deux cas : c'est elle qui donne le brut
+    imagine (`gi`) et le brut reel (`gr`) du bras, donc les deux harnais restent comparables
+    chiffre pour chiffre. `net_csv` est transmis au controle du bras myope.
+    """
     n_days = int(dd.max()) + 1
     count = np.bincount(dd, minlength=n_days).astype(float)
     b = _run_bounds(dd)
     c2 = half + FEE_PRIMAIRE * 1e-4
+    X = rhat if x is None else x
 
     t0 = time.time()
     blocks: dict = {}
@@ -186,10 +207,10 @@ def diag_symbol(sym: str, k_perm: int, k_shift: int) -> tuple[list, list, list]:
     blocks["plat"] = arm_block(np.zeros_like(rhat), rhat, rtrue, half, dd, n_days)
     blocks["bh"] = arm_block(np.ones_like(rhat), rhat, rtrue, half, dd, n_days)
 
-    p_ag = plan_by_run(rhat, c2, dd, HORIZON)
+    p_ag = planner(X, c2, dd, HORIZON)
     blocks["agent"] = arm_block(p_ag, rhat, rtrue, half, dd, n_days)
     t_plan = time.time() - t0
-    control_myope(sym, blocks["myope"], count, FEE_PRIMAIRE)
+    control_myope(sym, blocks["myope"], count, FEE_PRIMAIRE, net_csv)
 
     gross_ag = p_ag * rtrue
     net_ag = net_day(blocks["agent"], FEE_PRIMAIRE, imaginee=False)
@@ -272,8 +293,8 @@ def diag_symbol(sym: str, k_perm: int, k_shift: int) -> tuple[list, list, list]:
     null_img = np.empty(k_perm)
     null_to = np.empty(k_perm)
     for i in range(k_perm):
-        rp = permute_within_days(rng, rhat, b)
-        pp = plan_by_run(rp, c2, dd, HORIZON)
+        rp = permute_within_days(rng, X, b)
+        pp = planner(rp, c2, dd, HORIZON)
         blk = arm_block(pp, rhat, rtrue, half, dd, n_days)
         null_bp[i] = net_day(blk, FEE_PRIMAIRE, imaginee=False).sum() / n_pool * 1e4
         null_img[i] = net_day(blk, FEE_PRIMAIRE, imaginee=True).sum() / n_pool * 1e4
@@ -306,6 +327,21 @@ def diag_symbol(sym: str, k_perm: int, k_shift: int) -> tuple[list, list, list]:
           f"(myope {dp_my / n_pool:.4f}) ; long/flat/short "
           f"{frac[1.0]:.2f}/{frac[0.0]:.2f}/{frac[-1.0]:.2f}", flush=True)
     return ordre, [dec_myope], [derive, bruit]
+
+
+def diag_symbol(sym: str, k_perm: int, k_shift: int) -> tuple[list, list, list]:
+    """Le diagnostic de la phase 2 : lecture de l'artefact publie, puis `diag_arrays`."""
+    z = load_published(sym)
+    return diag_arrays(
+        sym,
+        np.asarray(z["pred"], float),
+        np.asarray(z["y"], float),
+        np.asarray(z["half"], float),
+        np.asarray(z["day"]).astype(int),
+        plan_by_run,
+        k_perm,
+        k_shift,
+    )
 
 
 def main() -> None:

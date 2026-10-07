@@ -15,5 +15,6 @@ experiments/
 experiments_ofi/
 experiments_arms/
 experiments_agent/
+experiments_2b/
 wandb/
 logs_agent.txt
