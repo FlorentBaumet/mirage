@@ -1,0 +1,179 @@
+# Pré-enregistrement - Phase 2 crypto : UN AGENT QUI PLANIFIE DANS LE WORLD MODEL
+#
+# FIGÉ et COMMITÉ AVANT toute exécution. Rien ici ne se modifie après avoir vu un
+# résultat (invariant I3).
+#
+# Motif : la spec du projet (§2) définit le Stage 2 comme « un agent basé-modèle qui
+# planifie DANS le world model, cherche un edge, et qu'on valide sur données réelles
+# tenues à part pour distinguer un VRAI edge d'une MODEL EXPLOITATION ». Les phases 1
+# à 1e ont établi qu'une règle myope (position = signe de la prédiction) perd de
+# l'argent dès 2 bp partout. Reste la question qui n'a pas été posée : une politique
+# qui PLANIFIE plusieurs pas dans le modèle, et qui tient compte du COÛT, fait-elle
+# mieux - et si elle gagne dans le modèle, gagne-t-elle dans le réel ?
+#
+# C'est la question du mirage, posée une dernière fois, au niveau de l'agent.
+
+meta:
+  nom: phase2_crypto_agent
+  fige_le: "2026-10-06"
+  phase_precedente: "configs/phase1e_crypto_prereg.yaml (mêmes données, mêmes folds)"
+  question: >
+    Un agent qui planifie à horizon dans le world model appris trouve-t-il un edge
+    réel, ou exploite-t-il les erreurs du modèle ? Mesuré en comparant, sur les MÊMES
+    positions, la récompense IMAGINÉE par l'agent et la récompense RÉELLE.
+
+donnees:
+  reference_dates: "configs/phase1c_crypto_prereg.yaml -> donnees.dates (44 dates)"
+  source: "Bybit L2, barres 1 s top-10 (déjà sur disque, data/raw/crypto_lob)"
+  symboles: [BTCUSDT, ETHUSDT, SOLUSDT, XRPUSDT, DOGEUSDT]
+  couverture_exigee: >
+    Les 44 x 5 couples, exactement ceux des phases 1, 1c, 1d et 1e. Un couple manquant
+    est un ÉCHEC BLOQUANT rapporté comme tel.
+
+monde:
+  # LE MONDE APPRIS EST INCHANGÉ par rapport aux phases 1/1c/1e : l'agent ne doit pas
+  # gagner parce qu'on a amélioré le modèle en même temps qu'on a ajouté l'agent.
+  classe: LinearWM            # primaire (le bras publié)
+  secondaire: MLPWM           # rapporté en plus, hyperparamètres figés de la phase 1d
+  etat: [ret, spread_rel, imb1, depth_imb, micro_dev]
+  lookback: 16
+  n_folds: 5
+  min_train_frac: 0.4
+  scheme: expanding
+  embargo: "max(10, lookback) = 16 échantillons"
+  cible: "rendement du mid à +1 s (RET_IDX)"
+
+agent:
+  # L'agent est un PLANIFICATEUR EXACT, pas une politique apprise. C'est un choix de
+  # méthode, pas une facilité : tout échec doit être imputable au MONDE APPRIS, jamais
+  # à la variance d'un optimiseur. Une politique apprise (policy gradient) ajouterait
+  # un jeu d'hyperparamètres et une instabilité qui rendraient le verdict inattribuable.
+  # Ici, l'optimal sous le modèle est calculé exactement : s'il ne gagne pas, c'est que
+  # le modèle est faux, point.
+  action: >
+    position dans {-1, 0, +1}, tenue une barre de 1 s. Taille petite : aucun impact de
+    ses propres ordres sur le marché (même convention que les phases 1/1c/1d/1e ; le
+    coût de ses propres ordres est un autre chantier, chiffré en phase 1b).
+  planificateur:
+    type: "programmation dynamique EXACTE sur l'horizon"
+    horizon_H: 10              # barres de 1 s. FIGÉ.
+    replanification: >
+      à CHAQUE barre (receding horizon) : on planifie H pas, on exécute le premier, on
+      avance d'une barre, on replanifie. La position de départ d'un plan est la position
+      RÉELLEMENT exécutée à la barre précédente, pas la position rêvée par le plan
+      précédent.
+    frontiere_de_jour: >
+      Un plan ne traverse JAMAIS une frontière de journée, et chaque journée repart à
+      plat (p=0). Même règle que `mirage.backtest.position_changes`.
+    cout_dans_le_plan: >
+      Le plan paie le coût du changement de position INTERNE au plan, et le premier pas
+      paie le coût depuis la position réellement détenue.
+  recompense:
+    imaginee: >
+      net = somme_t p_t * r_chapeau_t - somme_t |dp_t| * (demi_spread_t + frais),
+      où r_chapeau est le rendement PRÉDIT par le monde appris.
+    reelle: >
+      net = somme_t p_t * r_t - somme_t |dp_t| * (demi_spread_t + frais),
+      MÊMES positions, MÊMES coûts, rendements VRAIS. Le demi-spread est réellement
+      mesuré à la barre de décision dans les deux cas : l'agent le connaît.
+  ecart_exploitation:
+    definition: "net_imagine(agent) - net_reel(agent), par symbole, avec IC95 apparié par jour"
+    lecture: >
+      C'est LA mesure du sujet. Un écart grand et positif signifie que l'agent gagne
+      dans l'imagination du modèle et perd dans le réel : model exploitation.
+
+references:
+  # Comparaisons, toutes évaluées sur les rendements RÉELS sauf mention contraire.
+  myope:
+    definition: "p_t = signe(r_chapeau_t) - LE bras publié des phases 1/1c/1d/1e."
+    role: "la référence à battre. Toujours en position, ne connaît pas le coût."
+  plat:
+    definition: "p_t = 0."
+    role: "référence triviale : net = 0 exactement."
+  oracle:
+    definition: "p_t = signe(r_t), prévoyance parfaite."
+    role: "borne supérieure NON atteignable, pour situer l'échelle."
+  clairvoyant:
+    definition: "le MÊME planificateur DP, mais nourri des rendements VRAIS."
+    role: >
+      isole ce que la conscience du coût apporte à information parfaite. C'est le
+      meilleur plan qui existe ; si `oracle` bat `clairvoyant` en net, c'est que le coût
+      interdit de suivre le signe partout.
+
+evaluation:
+  frais_bp: [0.0, 2.0, 5.5]
+  frais_primaire: 2.0
+  cout: "demi-spread réel mesuré à la barre de décision + frais, payé au changement de position"
+  remise_a_plat: "à chaque frontière de jour"
+  bootstrap:
+    unite: "jour"
+    n_boot: 2000
+    seed: 0
+    type: "circulaire, rééchantillonnage des jours avec remise"
+    variante_robustesse:
+      longueur_bloc_jours: 3
+    appariement: >
+      Identique aux phases 1c/1d/1e : mêmes journées tirées pour les deux bras à chaque
+      réplique, statistique = différence. Agent et myope portent les MÊMES journées et
+      les MÊMES cibles par construction.
+
+regles:
+  planificateur_coherent:
+    type: "CONTRÔLE ANTI-BUG, pas un résultat"
+    enonce: >
+      Le net IMAGINÉ de l'agent doit être >= le net IMAGINÉ du myope sur les 5 symboles.
+      Le DP maximise cette quantité exactement : une violation est un BUG de
+      l'implémentation, jamais un résultat, et invalide tout le reste.
+  exploitation_du_modele:
+    enonce: >
+      Pour un symbole, il y a MODEL EXPLOITATION ssi net_imagine(agent) > 0 ET
+      net_reel(agent) <= 0. Rapporté comme un compte sur 5.
+  agent_bat_le_myope:
+    enonce: >
+      La planification et la conscience du coût apportent quelque chose ssi l'IC95
+      apparié (jour) de net_reel(agent) - net_reel(myope) a une borne basse STRICTEMENT
+      positive pour au moins 4 des 5 symboles.
+  edge_reel:
+    enonce: >
+      L'agent a un edge ssi l'IC95 apparié de net_reel(agent) a une borne basse
+      STRICTEMENT positive pour au moins 4 des 5 symboles. (Seuil volontairement
+      exigeant, identique en esprit aux phases précédentes.)
+  bascule:
+    enonce: "Règle de la phase 1, réappliquée : borne basse de net_bp à 2 bp > 0."
+  resultat_negatif:
+    enonce: >
+      Un résultat négatif bien démontré est un résultat valide et se publie tel quel.
+      C'est même le résultat attendu ici, et il est aussi informatif qu'un positif :
+      « l'agent optimal dans le modèle n'a pas d'edge dans le réel » est exactement la
+      réponse que la spec du projet (§2) désigne comme publiable.
+
+robustesse:
+  # Tableaux rapportés SANS servir à choisir : l'horizon primaire est H=10 et il le
+  # reste. Ce sont des diagnostics, pas une grille de réglage.
+  horizons: [1, 5, 20]
+  role: >
+    H=1 est le cas limite « un pas » : le planificateur n'y fait déjà plus la même
+    chose que le myope, puisqu'il ne trade que si |r_chapeau| dépasse le coût. Si le
+    résultat dépend fortement de H, il faut le dire.
+  variante_robustesse_bootstrap: "blocs contigus de 3 jours"
+
+hors_scope:
+  - "impact de ses propres ordres (phase 1b) : l'agent est un petit trader sans impact."
+  - "maker / post-only : hérite d'un risque de non-exécution non modélisé."
+  - "apprentissage de politique (policy gradient, Dreamer au sens strict) : écarté pour"
+  - "que tout échec soit imputable au monde appris et non à l'optimiseur."
+  - "simulateur à agent (ABIDES) : la validation reste sur données réelles tenues à part."
+
+rapport:
+  sortie: "reports/PHASE2_AGENT.md (+ section dans reports/README.md, + README)"
+  doit_contenir:
+    - "contrôle : le bras myope doit reproduire les chiffres publiés des phases 1/1c (R²_OOS et net à 2 bp)"
+    - "contrôle anti-bug : net imaginé de l'agent >= net imaginé du myope sur 5/5"
+    - "la mesure centrale : net imaginé vs net réel de l'agent, par symbole, IC95 apparié"
+    - "écart d'exploitation = imaginé - réel, par symbole, avec IC95"
+    - "net réel par bras (agent, myope, plat, clairvoyant) et par frais, avec IC95 à 2 bp"
+    - "borne oracle (prévoyance parfaite) pour situer l'échelle"
+    - "tableau de robustesse par horizon H, sans sélection"
+    - "verdicts des règles, appliqués mécaniquement"
+    - "ce que l'agent ne fait pas : pas d'impact, pas de maker, pas de politique apprise"
+    - "tous les chiffres, sans sélection"

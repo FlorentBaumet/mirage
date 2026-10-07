@@ -14,4 +14,6 @@ data/raw/
 experiments/
 experiments_ofi/
 experiments_arms/
+experiments_agent/
 wandb/
+logs_agent.txt

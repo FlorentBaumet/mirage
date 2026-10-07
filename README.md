@@ -38,7 +38,7 @@ SOL sur le jeu précédent. Le mirage ne repose donc sur aucune hypothèse de fr
 structurel. Détail, limites et chiffres complets :
 [`reports/PHASE1_CRYPTO.md`](reports/PHASE1_CRYPTO.md).
 
-## La thèse, démontrée sur six jeux de données - et deux re-tests qui ne la renversent pas
+## La thèse, démontrée sur six jeux de données - et trois re-tests qui ne la renversent pas
 
 | Phase | Données | Question | Verdict |
 |---|---|---|---|
@@ -50,6 +50,19 @@ structurel. Détail, limites et chiffres complets :
 | [**1c (OFI)**](reports/PHASE1C_OFI.md) | idem 1, + OFI événementiel au meilleur niveau | Ajouter une information absente des barres 1 s (le flux intra-seconde) change-t-il la prévision - et le verdict ? | **Non, et c'est publié tel quel** : ΔR²_OOS(ret) apparié entre **−0.0006 et +0.0000**, apport non établi sur **0/5** symbole (seuil pré-enregistré ≥ 4/5), net à 2 bp inchangé (≤ 0.01 bp). Un résultat négatif bien démontré vaut un résultat. |
 | [**1d (OFI, non linéaire)**](reports/PHASE1D_NL.md) | idem 1c, modèle MLP au lieu du linéaire, état identique | L'absence d'apport de l'OFI est-elle un artefact du modèle linéaire ? | **Non** : à état identique, un MLP ne tire rien de l'OFI (apport **0/5**) et le **dégrade significativement** sur SOL et XRP. La lecture « déjà contenue dans l'état » tient pour deux classes de modèles. |
 | [**1e (profondeur)**](reports/PHASE1E_PROFONDEUR.md) | idem 1, + déséquilibre des niveaux 2–10 et asymétrie de pente du carnet | L'information au-delà du meilleur niveau apporte-t-elle quelque chose ? | **Apport partiel, non promu** : ΔR² significativement positif sur BTC et ETH, **négatif** sur XRP et DOGE (**2/5**), et le signe s'inverse sous MLP. La réserve pré-enregistrée est à moitié réfutée par les données - publié tel quel. |
+| [**2 (agent)**](reports/PHASE2_AGENT.md) | idem 1, **même modèle**, planificateur DP exact conscient du coût | Un agent qui planifie dans le world model trouve-t-il un edge, ou exploite-t-il ses erreurs ? | **Le premier net réel positif du projet - et il ne dit pas ce qu'il a l'air de dire.** `edge_reel` 5/5 (+0.02 à +0.09 bp/barre à 2 bp, IC95 > 0 partout), bruit 5/5 perdant (p ≤ 0.025), dérive nulle à la 4ᵉ décimale, turnover ÷ 20 à ÷ 120. Mais le brut directionnel de l'agent est **inférieur** à celui du bras publié sur **5/5** : la marge vient du spread qu'il refuse de payer, pas d'une meilleure prévision. Un résultat d'exécution, pas de signal. |
+
+> **Le résultat positif de la Phase 2 est le plus piégeux du projet, et il se lit en deux
+> temps.** Un agent qui planifie 10 barres dans le world model et paie le spread **dans son
+> plan** dégage un net réel positif sur 5/5 symboles, et trois diagnostics écartent les
+> explications faciles : un agent nourri de bruit, avec les mêmes coûts, perd sur 5/5
+> (p ≤ 0.025) ; la contribution de la dérive directionnelle est nulle à la quatrième
+> décimale, et 400 décalages circulaires ne reproduisent jamais le brut observé ; le
+> turnover s'effondre de 48 000–65 000 à 410–2 629 changements par jour. Mais l'agent
+> **ne prédit pas mieux** : son brut directionnel est *inférieur* à celui du bras publié sur
+> 5/5, et toute sa marge vient du spread qu'il refuse de payer quand le gain espéré ne le
+> couvre pas. Ce que le monde appris a appris, une fois qu'on planifie dedans, c'est **quand
+> ne pas trader** - pas où va le prix. À H = 1, il ne reste d'ailleurs rien.
 
 ## Méthodologie - ce qui rend l'évaluation crédible
 
