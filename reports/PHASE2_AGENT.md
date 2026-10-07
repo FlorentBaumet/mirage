@@ -1,6 +1,33 @@
 # Phase 2 - un agent qui planifie dans le world model
 
-**Verdict : premier résultat positif du projet, et il survit aux trois contrôles de
+> **ERRATUM - 2026-10-08. Le verdict de ce rapport est SUSPENDU.**
+>
+> Le planificateur de la Phase 2 (`plan_by_run` sur la série des prédictions à 1 pas) lit, à
+> la barre t, les prédictions `rhat[t+1..t+H-1]`. Or `make_supervised` aligne
+> X[k] = états k..k+L-1 et Y[k] = état k+L : `rhat[t+1]` est donc calculée sur une fenêtre
+> qui **contient Y[t]**, c'est-à-dire le rendement que la position `p_t` encaisse. Un
+> planificateur honnête à t ne dispose que des prévisions **faites à t** des rendements
+> `r_t .. r_{t+H-1}`. Contrôle en lecture seule sur l'artefact publié, à 2 bp et H = 10 :
+> `corr(rhat[t+1], y[t]) = +0.2680` (DOGE) et `+0.3951` (BTC), contre `+0.1455` et `+0.2285`
+> pour la corrélation légitime. L'écart entre les deux est le rendement de la fuite.
+>
+> **Ce qui est suspendu** : `edge_reel` (OUI sur 5/5 ci-dessous) et `agent_bat_le_myope`
+> (OUI sur 5/5). Le rapport reste publié tel quel - il documente exactement ce qui a été
+> mesuré, et le reste de son contenu est intact - mais **aucune de ces deux conclusions
+> positives ne doit être citée sans cette réserve**.
+>
+> **Ce qui n'est pas touché** : le bras myope, le clairvoyant, les Phases 0 à 1e, et l'agent
+> **H = 1** de la Phase 2, où `F = 0` et donc où il n'y a rien à lire dans le futur (IC95
+> contenant 0 sur 5/5). Les trois diagnostics de confondant gardent leur **méthode** ; mais
+> celui sur le bruit ne pouvait pas voir la fuite, la permutation intra-journée détruisant la
+> fuite en même temps que le signal.
+>
+> Re-mesure **pré-enregistrée avant tout calcul** : `configs/phase2b_crypto_prereg.yaml`,
+> avec un planificateur causal par rollout (`plan_positions_causal`). Le résultat y sera
+> écrit, quel qu'il soit.
+
+**Verdict publié le 2026-10-07 (suspendu depuis) : premier résultat positif du projet, et il
+survit aux trois contrôles de
 confondant - mais il faut dire précisément ce qu'il est.** Un planificateur exact, qui
 choisit ses positions en maximisant la récompense **imaginée** par le world model appris et
 qui **paie le coût dans son plan**, dégage un net **réel** positif à 2 bp sur **5/5**

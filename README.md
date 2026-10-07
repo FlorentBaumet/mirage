@@ -50,8 +50,20 @@ structurel. Détail, limites et chiffres complets :
 | [**1c (OFI)**](reports/PHASE1C_OFI.md) | idem 1, + OFI événementiel au meilleur niveau | Ajouter une information absente des barres 1 s (le flux intra-seconde) change-t-il la prévision - et le verdict ? | **Non, et c'est publié tel quel** : ΔR²_OOS(ret) apparié entre **−0.0006 et +0.0000**, apport non établi sur **0/5** symbole (seuil pré-enregistré ≥ 4/5), net à 2 bp inchangé (≤ 0.01 bp). Un résultat négatif bien démontré vaut un résultat. |
 | [**1d (OFI, non linéaire)**](reports/PHASE1D_NL.md) | idem 1c, modèle MLP au lieu du linéaire, état identique | L'absence d'apport de l'OFI est-elle un artefact du modèle linéaire ? | **Non** : à état identique, un MLP ne tire rien de l'OFI (apport **0/5**) et le **dégrade significativement** sur SOL et XRP. La lecture « déjà contenue dans l'état » tient pour deux classes de modèles. |
 | [**1e (profondeur)**](reports/PHASE1E_PROFONDEUR.md) | idem 1, + déséquilibre des niveaux 2–10 et asymétrie de pente du carnet | L'information au-delà du meilleur niveau apporte-t-elle quelque chose ? | **Apport partiel, non promu** : ΔR² significativement positif sur BTC et ETH, **négatif** sur XRP et DOGE (**2/5**), et le signe s'inverse sous MLP. La réserve pré-enregistrée est à moitié réfutée par les données - publié tel quel. |
-| [**2 (agent)**](reports/PHASE2_AGENT.md) | idem 1, **même modèle**, planificateur DP exact conscient du coût | Un agent qui planifie dans le world model trouve-t-il un edge, ou exploite-t-il ses erreurs ? | **Le premier net réel positif du projet - et il ne dit pas ce qu'il a l'air de dire.** `edge_reel` 5/5 (+0.02 à +0.09 bp/barre à 2 bp, IC95 > 0 partout), bruit 5/5 perdant (p ≤ 0.025), dérive nulle à la 4ᵉ décimale, turnover ÷ 20 à ÷ 120. Mais le brut directionnel de l'agent est **inférieur** à celui du bras publié sur **5/5** : la marge vient du spread qu'il refuse de payer, pas d'une meilleure prévision. Un résultat d'exécution, pas de signal. |
+| [**2 (agent)**](reports/PHASE2_AGENT.md) | idem 1, **même modèle**, planificateur DP exact conscient du coût | Un agent qui planifie dans le world model trouve-t-il un edge, ou exploite-t-il ses erreurs ? | **Le premier net réel positif du projet - et il ne dit pas ce qu'il a l'air de dire.** `edge_reel` 5/5 (+0.02 à +0.09 bp/barre à 2 bp, IC95 > 0 partout), bruit 5/5 perdant (p ≤ 0.025), dérive nulle à la 4ᵉ décimale, turnover ÷ 20 à ÷ 120. Mais le brut directionnel de l'agent est **inférieur** à celui du bras publié sur **5/5** : la marge vient du spread qu'il refuse de payer, pas d'une meilleure prévision. Un résultat d'exécution, pas de signal. **VERDICT SUSPENDU le 2026-10-08** : le planificateur lisait à t des prédictions faites après t. Re-mesure causale pré-enregistrée. |
 
+> **Le verdict de la Phase 2 est suspendu depuis le 2026-10-08.** Le planificateur de la
+> Phase 2 décidait à la barre t en lisant `rhat[t+1..t+H-1]`, des prédictions faites **plus
+> tard** que t ; et comme `make_supervised` aligne Y[k] = état k+L, `rhat[t+1]` est calculée
+> sur une fenêtre qui **contient le rendement que la position de t encaisse**. Un
+> planificateur honnête à t n'a que les prévisions **faites à t**. Les deux conclusions
+> positives du rapport (`edge_reel`, `agent_bat_le_myope`, 5/5 chacune) ne doivent plus être
+> citées sans cette réserve, le temps d'une re-mesure causale **pré-enregistrée avant tout
+> calcul** dans [`configs/phase2b_crypto_prereg.yaml`](configs/phase2b_crypto_prereg.yaml).
+> Ne sont pas touchés : le bras myope, le clairvoyant, les Phases 0 à 1e, et l'agent H = 1 de
+> la Phase 2, où la valeur des pas suivants est nulle et où il n'y a donc rien à lire dans le
+> futur. Le détail est dans l'erratum en tête de [`reports/PHASE2_AGENT.md`](reports/PHASE2_AGENT.md).
+>
 > **Le résultat positif de la Phase 2 est le plus piégeux du projet, et il se lit en deux
 > temps.** Un agent qui planifie 10 barres dans le world model et paie le spread **dans son
 > plan** dégage un net réel positif sur 5/5 symboles, et trois diagnostics écartent les
