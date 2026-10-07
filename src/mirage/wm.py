@@ -11,6 +11,30 @@ import numpy as np
 from sklearn.linear_model import Ridge
 from sklearn.neural_network import MLPRegressor
 
+from .state import RET_IDX
+
+
+def cumulative_target(Y: np.ndarray, horizon: int, ret_idx: int = RET_IDX):
+    """Cible a horizon : somme des `horizon` rendements a partir de la ligne k.
+
+    yH[k] = somme des Y[j, ret_idx] pour j = k .. k+horizon-1. Les `horizon - 1` derniers
+    echantillons n'ont pas de fenetre complete et sont EXCLUS : renvoie (yH, idx), ou idx
+    contient les seuls indices retenus, dans l'ordre.
+
+    La cible a horizon est le bon levier pour tester la dependance a l'horizon : l'agent de
+    la Phase 2c ne peut la lire qu'en prenant un risque de duree, pas en relisant la serie
+    des predictions a 1 pas.
+    """
+    Y = np.asarray(Y, float)
+    m = len(Y)
+    if horizon < 1:
+        raise ValueError("horizon >= 1 requis.")
+    if m < horizon:
+        return np.zeros(0), np.zeros(0, dtype=int)
+    cum = np.concatenate([[0.0], np.cumsum(Y[:, ret_idx])])
+    idx = np.arange(m - horizon + 1)
+    return cum[idx + horizon] - cum[idx], idx
+
 
 def make_supervised(S: np.ndarray, lookback: int):
     """(n, d) -> X (m, lookback*d), Y (m, d), pos (m,), d  avec m = n - lookback.
