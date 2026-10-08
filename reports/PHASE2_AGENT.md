@@ -1,6 +1,7 @@
 # Phase 2 - un agent qui planifie dans le world model
 
-> **ERRATUM - 2026-10-08. Le verdict de ce rapport est SUSPENDU.**
+> **ERRATUM - 2026-10-08. Le verdict de ce rapport est SUSPENDU, puis RE-MESURE le jour
+> même : il ne tient pas.**
 >
 > Le planificateur de la Phase 2 (`plan_by_run` sur la série des prédictions à 1 pas) lit, à
 > la barre t, les prédictions `rhat[t+1..t+H-1]`. Or `make_supervised` aligne
@@ -11,10 +12,25 @@
 > `corr(rhat[t+1], y[t]) = +0.2680` (DOGE) et `+0.3951` (BTC), contre `+0.1455` et `+0.2285`
 > pour la corrélation légitime. L'écart entre les deux est le rendement de la fuite.
 >
-> **Ce qui est suspendu** : `edge_reel` (OUI sur 5/5 ci-dessous) et `agent_bat_le_myope`
-> (OUI sur 5/5). Le rapport reste publié tel quel - il documente exactement ce qui a été
-> mesuré, et le reste de son contenu est intact - mais **aucune de ces deux conclusions
-> positives ne doit être citée sans cette réserve**.
+> **Re-mesure causale, pré-enregistrée avant tout calcul** : `configs/phase2b_crypto_prereg.yaml`,
+> planificateur par rollout (`plan_positions_causal`), mêmes 44 journées, mêmes folds, mêmes
+> frais. Résultat, quel qu'il soit :
+>
+> - `edge_reel_causal` : **NON, 0/5**. Le net réel de l'agent causal à 2 bp vaut de
+>   **-0.0056 à +0.0003** bp/barre ; son IC95 est entièrement négatif sur DOGE, SOL et XRP,
+>   contient 0 sur BTC et ETH, et n'est **jamais au-dessus de 0**. Le premier résultat
+>   positif du projet était un artefact de la fuite.
+> - `fuite_significative` : **OUI, 5/5**. L'écart apparié par journée (bras publié moins
+>   agent causal) vaut **+0.021 à +0.096** bp, IC95 > 0 partout : c'est la fuite qui portait
+>   le net publié, et son ampleur est du même ordre que lui.
+> - `agent_causal_bat_le_myope` : OUI 5/5, mais **cela ne vaut rien en soi**. Le brut
+>   directionnel de l'agent causal est **inférieur** à celui du myope sur 5/5, et tout son
+>   écart net est du coût évité : à 2 bp il s'abstient presque complètement (turnover
+>   **1e-4 à 3e-3**, contre 0.57 à 0.77 pour le myope). Il ne lit pas mieux le marché ; il
+>   constate, à raison, qu'il n'y a rien à y gagner.
+> - L'écart d'exploitation **négatif et significatif** de la Phase 2 (5/5, §4 ci-dessous et
+>   §10) **disparaît** : avec le planificateur causal son IC95 contient 0 ou est > 0 sur
+>   **5/5**. Là encore, la prédiction pré-enregistrée est confirmée.
 >
 > **Ce qui n'est pas touché** : le bras myope, le clairvoyant, les Phases 0 à 1e, et l'agent
 > **H = 1** de la Phase 2, où `F = 0` et donc où il n'y a rien à lire dans le futur (IC95
@@ -22,11 +38,11 @@
 > celui sur le bruit ne pouvait pas voir la fuite, la permutation intra-journée détruisant la
 > fuite en même temps que le signal.
 >
-> Re-mesure **pré-enregistrée avant tout calcul** : `configs/phase2b_crypto_prereg.yaml`,
-> avec un planificateur causal par rollout (`plan_positions_causal`). Le résultat y sera
-> écrit, quel qu'il soit.
+> Rapport définitif : [`PHASE2B_CAUSAL.md`](PHASE2B_CAUSAL.md).
 
-**Verdict publié le 2026-10-07 (suspendu depuis) : premier résultat positif du projet, et il
+**Verdict publié le 2026-10-07 (réfuté le 2026-10-08 par la re-mesure causale : ce qui suit
+est conservé tel qu'il a été écrit, et ne vaut que comme pièce du dossier) : premier résultat
+positif du projet, et il
 survit aux trois contrôles de
 confondant - mais il faut dire précisément ce qu'il est.** Un planificateur exact, qui
 choisit ses positions en maximisant la récompense **imaginée** par le world model appris et
