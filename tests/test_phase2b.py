@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
 
@@ -106,3 +107,47 @@ def test_causal_planner_ignore_le_cout_scalaire_et_slice():
     # ... et il DEPEND bien de la matrice de couts : sinon le test ci-dessus serait vide
     autre = phase2b.causal_planner(C * 50.0)(R, np.zeros(len(dd)), dd, 5)
     assert not np.array_equal(autre, attendu)
+
+
+# --- etape A2 (cible cumulee, exploratoire) --------------------------------------------
+
+def test_embargo_a2_est_celui_du_prereg():
+    """L'embargo A2 doit couvrir le chevauchement de la cible : LOOKBACK + H, soit 26."""
+    cfg = yaml.safe_load((ROOT / "configs" / "phase2b_crypto_prereg.yaml").read_text(
+        encoding="utf-8"))
+    assert phase2b.EMBARGO_A2 == cfg["regles_A2"]["embargo"] == 26
+    assert phase2b.EMBARGO_A2 >= phase2b.LOOKBACK + phase2b.HORIZON
+
+
+def test_r2_ci_donne_le_r2_naif_et_un_intervalle():
+    """Le point de `_r2_ci` doit etre exactement le R² naif, et l'IC l'encadrer."""
+    rng = np.random.default_rng(11)
+    dd = np.repeat(np.arange(9), 30)
+    y = rng.normal(0, 1e-3, len(dd))
+    p = 0.6 * y + rng.normal(0, 1e-3, len(dd))
+    r2, lo, hi = phase2b._r2_ci(y, p, dd, 9, blk=1)
+    assert abs(r2 - (1.0 - ((y - p) ** 2).sum() / (y ** 2).sum())) < 1e-15
+    assert lo < r2 < hi
+
+    # Piege du tirage circulaire par blocs : avec des blocs au moins aussi longs que le
+    # pool, chaque replication contient TOUTES les journees (une permutation circulaire),
+    # donc la loi bootstrap est degeneree et l'IC se reduit au point. Ce n'est pas un bug
+    # de `_r2_ci`, c'est la convention de `boot_mult` ; sur les 27-44 journees du harnais
+    # (blocs de 3) elle ne mord pas, mais elle rendrait un IC vide sur un petit pool.
+    r2b, lob, hib = phase2b._r2_ci(y, p, dd, 9, blk=9)
+    assert (lob, hib) == (r2b, r2b)
+
+
+def test_verdicts_a2_compte_les_bonnes_lignes():
+    """Les deux regles A2 se lisent sur `lo > 0`, sur les seules lignes du bon bras."""
+    syms = ["A", "B", "C", "D", "E"]
+    r2 = pd.DataFrame([{"symbol": s, "type": "direct_yH", "h": 10,
+                        "lo": 1e-4 if s != "E" else -1e-4} for s in syms])
+    cmp_ = pd.DataFrame([{"symbol": s, "gain": "agent_direct@2", "ref": "agent_causal_A2@2",
+                          "nature": "reel", "lo": 1e-4 if s != "E" else -1e-4} for s in syms]
+                        + [{"symbol": s, "gain": "agent_direct@2", "ref": "myope",
+                            "nature": "reel", "lo": -1.0} for s in syms])
+    v = phase2b.verdicts_a2(pd.DataFrame(), cmp_, r2)
+    assert v["signal_horizon"]["n"] == "4/5" and v["signal_horizon"]["ok"]
+    assert v["direct_bat_rollout"]["n"] == "4/5" and v["direct_bat_rollout"]["ok"]
+    assert v["direct_bat_rollout"]["detail"]["E"] is False

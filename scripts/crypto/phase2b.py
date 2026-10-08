@@ -30,8 +30,10 @@ import time
 
 import numpy as np
 import pandas as pd
+import yaml
 from agent_diag import diag_arrays
 from agent_plan import (
+    BLK,
     BRAS_FIXES,
     FEE_PRIMAIRE,
     FEES_BP,
@@ -47,13 +49,24 @@ from agent_plan import (
     plan_by_run,
     tag,
 )
-from arm_eval import ARMS, EMBARGO, LOOKBACK, MINTRAIN, NFOLDS, _days_and_spread, build_wide
-from crypto_lob import _merge_csv, load_cached
+from arm_eval import (
+    ARMS,
+    EMBARGO,
+    LOOKBACK,
+    MINTRAIN,
+    NFOLDS,
+    SPREAD_IDX,
+    _days_and_spread,
+    build_wide,
+)
+from bootstrap_signif import boot_mult
+from crypto_lob import DATES_PUBLIEES_1C, _merge_csv, date_of, load_cached
 
 from mirage.plan import mask_day_end, plan_positions_causal
 from mirage.splits import walk_forward_splits
 from mirage.state import RET_IDX
-from mirage.wm import MLPWM, LinearWM, make_supervised, rollout
+from mirage.wm import MLPWM, LinearWM, cumulative_target, make_supervised, rollout
+from mirage.wm_eval import rollout_r2
 
 OUT = "experiments_2b"
 REF_AGENT = "experiments_agent"     # sorties de la Phase 2 : le controle d'integrite
@@ -70,13 +83,27 @@ def eval_symbol_2b(sym: str, S_days, days, spread, model_name: str = "linear"):
     """
     idx = np.asarray(ARMS["base"])
     D = len(idx)
-    Xs, Ys = [], []
-    for Sd in S_days:
+    # `len(X_jour) = len(S_jour) - LOOKBACK` : on connait donc la taille totale AVANT de
+    # construire quoi que ce soit, et on remplit deux tableaux prealloues jour par jour.
+    # Un `np.vstack` des X de chaque jour doublerait le pic (la liste des jours, puis la
+    # copie) : ~4,9 Go de trop sur l'union des 88 journees. L'egalite ci-dessus est la meme
+    # que celle dont `calib_diag.n_train_par_pli` tire les tailles de pli, donc elle est
+    # verifiee ici plutot que supposee.
+    ns = [len(Sd) - LOOKBACK for Sd in S_days]
+    Xa = np.empty((sum(ns), LOOKBACK * D))
+    Ya = np.empty((sum(ns), D))
+    o = 0
+    for Sd, n in zip(S_days, ns, strict=True):
         X, Y, _, _ = make_supervised(Sd[:, idx], LOOKBACK)
-        Xs.append(X)
-        Ys.append(Y)
-    Xa, Ya = np.vstack(Xs), np.vstack(Ys)
-    del Xs, Ys
+        if len(X) != n:
+            raise SystemExit(f"ECHEC [{sym}] : make_supervised rend {len(X)} fenetres, "
+                             f"len(S) - LOOKBACK en annonce {n}. La reconstruction des "
+                             f"tailles de pli serait fausse.")
+        Xa[o:o + n] = X
+        Ya[o:o + n] = Y
+        o += n
+        del X, Y
+    del S_days
 
     splits = list(walk_forward_splits(len(Xa), NFOLDS, EMBARGO, MINTRAIN, "expanding"))
     used = np.zeros(len(Xa), dtype=bool)
@@ -153,6 +180,161 @@ def eval_symbol_2b(sym: str, S_days, days, spread, model_name: str = "linear"):
     ext = {"R": Rm[:, :HORIZON], "C": Cm2[:, :HORIZON], "rhat": rhat, "rtrue": rtrue,
            "half": half, "dd": dd}
     return npz, ext
+
+
+# --------------------------------------------------------------------------------------
+# Etape 2b-3 : A2, cible cumulee (EXPLORATOIRE). Echantillon DIFFERENT de 2b-2 : les
+# chiffres A2 ne se comparent jamais a ceux de 2b-2 (prereg, `regles_A2`).
+#
+# yH[k] = somme des H rendements a partir de k, DANS la journee : la cible chevauche H pas
+# en avant, donc l'embargo doit valoir LOOKBACK + H et pas LOOKBACK + 10. Les H-1 derniers
+# echantillons de chaque jour sont exclus (jamais de somme par-dessus la nuit).
+# --------------------------------------------------------------------------------------
+
+EMBARGO_A2 = LOOKBACK + HORIZON     # 26 : la cible chevauche HORIZON pas en avant
+if EMBARGO_A2 != 26:
+    # Le prereg est fige (`regles_A2.embargo: 26`). Changer l'horizon sans changer le
+    # prereg ferait tomber l'embargo sous LOOKBACK + H : le harnais doit s'arreter plutot
+    # que de tourner avec une regle qui n'est plus celle qui a ete annoncee.
+    raise SystemExit(f"regles_A2 fige l'embargo a 26 ; LOOKBACK + HORIZON = {EMBARGO_A2}. "
+                     f"Le prereg doit etre modifie AVANT le run.")
+
+
+def _r2_ci(y, p, dd, n_days, n_boot=N_BOOT, blk=BLK, seed=SEED):
+    """(R², lo, hi) : R² = 1 - SSres/SSbase, dont les deux sommes sont tirees par jour."""
+    ssb = np.bincount(dd, weights=y * y, minlength=n_days)
+    ssr = np.bincount(dd, weights=(y - p) ** 2, minlength=n_days)
+    k = np.bincount(dd, minlength=n_days) > 0
+    m = boot_mult(np.random.default_rng(seed), int(k.sum()), n_boot, blk)
+    B, R = m @ ssb[k], m @ ssr[k]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r2 = np.where(B > 0, 1.0 - R / B, np.nan)
+    r2 = r2[np.isfinite(r2)]
+    point = float(1.0 - ssr.sum() / ssb.sum())
+    if r2.size == 0:
+        return point, float("nan"), float("nan")
+    return point, float(np.percentile(r2, 2.5)), float(np.percentile(r2, 97.5))
+
+
+def eval_symbol_a2(sym: str, S_days, model_name: str = "linear"):
+    """Le monde de la Phase 2 sur la cible cumulee `yH`, plus les deux bras A2.
+
+    Deux modeles sont ajustes sur les MEMES plis : le modele a un pas (etat complet), qu'on
+    deroule et qui porte `agent_causal_A2`, et le modele de la cible cumulee (cible
+    scalaire), qui porte `agent_direct`. Les deux bras sont donc apparies par construction.
+    """
+    idx = np.asarray(ARMS["base"])
+    D = len(idx)
+    Xs, Ys, dds, hfs, cums = [], [], [], [], []
+    for di, Sd in enumerate(S_days):
+        X, Y, _, _ = make_supervised(Sd[:, idx], LOOKBACK)
+        yH, k = cumulative_target(Y, HORIZON)
+        if len(k) == 0:                       # journee plus courte que l'horizon
+            continue
+        Xs.append(X[k])
+        Ys.append(Y[k])
+        # Verite cumulee sur les pas 1..H, lue dans la MEME journee : cum[k+g] - cum[k].
+        cum = np.concatenate([[0.0], np.cumsum(Y[:, RET_IDX])])
+        g = np.arange(1, HORIZON + 1)[None, :]
+        cums.append(cum[k[:, None] + g] - cum[k[:, None]])
+        dds.append(np.full(len(k), di))
+        hfs.append(Sd[k + LOOKBACK - 1, SPREAD_IDX] / 2.0)   # spread a la barre de decision
+    if not Xs:
+        raise SystemExit(f"[{sym}] aucune journee plus longue que H = {HORIZON}.")
+    X2, Y2 = np.vstack(Xs), np.vstack(Ys)
+    act, dd2, half2 = np.vstack(cums), np.concatenate(dds), np.concatenate(hfs)
+    yH = act[:, -1]
+    del Xs, Ys, cums
+    n_days = int(dd2.max()) + 1
+
+    splits = list(walk_forward_splits(len(X2), NFOLDS, EMBARGO_A2, MINTRAIN, "expanding"))
+    used = np.zeros(len(X2), dtype=bool)
+    for _tr, te in splits:
+        used[te] = True
+    keep = np.flatnonzero(used)
+    n2 = len(keep)
+
+    pred1 = np.empty(n2)
+    y1 = np.empty(n2)
+    yHp = np.empty(n2)
+    R = np.empty((n2, HORIZON))
+    for tr, te in splits:
+        m1 = LinearWM() if model_name == "linear" else MLPWM()
+        m1.fit(X2[tr], Y2[tr])
+        mc = LinearWM() if model_name == "linear" else MLPWM()
+        mc.fit(X2[tr], yH[tr, None])
+        sel = np.searchsorted(keep, te)
+        pred1[sel] = m1.predict(X2[te])[:, RET_IDX]
+        y1[sel] = Y2[te][:, RET_IDX]
+        yHp[sel] = mc.predict(X2[te])[:, 0]
+        base, te0 = int(sel[0]), int(te[0])
+        for a in range(0, len(te), CHUNK):
+            e = min(a + CHUNK, len(te))
+            win = X2[te0 + a:te0 + e].reshape(-1, LOOKBACK, D)
+            R[base + a:base + e] = rollout(m1, win, HORIZON)[:, :, RET_IDX]
+    del X2, Y2, yH
+
+    dk, hk = dd2[keep], half2[keep]
+    yHk, yHk_p, actk = act[keep, -1], yHp[keep], act[keep]
+    npz: dict = {"y": y1, "pred": pred1, "half": hk, "day": dk, "n_oos": n2,
+                 "count": np.bincount(dk, minlength=n_days).astype(float), "symbole": sym}
+    _reduce(npz, "myope", np.sign(pred1) * pred1, np.sign(pred1) * y1,
+            np.sign(pred1), hk, dk, n_days)
+
+    Rm = mask_day_end(R, dk)
+    for fee in FEES_BP:
+        c = hk + fee * 1e-4
+        Cm = mask_day_end(np.repeat(c[:, None], HORIZON, axis=1), dk)
+        p_c = plan_positions_causal(Rm, Cm, dk)
+        _reduce(npz, tag("agent_causal_A2", fee), p_c * pred1, p_c * y1, p_c, hk, dk, n_days)
+        # `agent_direct` : la cible cumulee, divisee par H, repete sur les H pas du jour.
+        Rd = np.repeat((yHk_p / HORIZON)[:, None], HORIZON, axis=1)
+        mask_day_end(Rd, dk)
+        p_d = plan_positions_causal(Rd, Cm, dk)
+        _reduce(npz, tag("agent_direct", fee), p_d * pred1, p_d * y1, p_d, hk, dk, n_days)
+
+    # --- R² : la cible cumulee, et le rollout du modele a un pas comme reference ---------
+    pred_cum = np.cumsum(Rm, axis=1)
+    horizons = (1, 5, HORIZON)
+    ref = rollout_r2(actk, pred_cum, horizons)          # reference deja publiee (wm_eval)
+    rows = []
+    for h in horizons:
+        r2, lo, hi = _r2_ci(actk[:, h - 1], pred_cum[:, h - 1], dk, n_days)
+        # Les deux chemins de code doivent tomber sur le meme point : sinon l'IC ci-dessus
+        # n'est pas l'IC du chiffre cite.
+        if abs(r2 - ref[h]) > 1e-12:
+            raise SystemExit(f"[{sym}] R² du rollout inconsistant a h={h} : {r2} vs {ref[h]}")
+        rows.append({"symbol": sym, "type": "rollout_1pas", "h": h, "r2": r2, "lo": lo,
+                     "hi": hi})
+    r2, lo, hi = _r2_ci(yHk, yHk_p, dk, n_days)
+    rows.append({"symbol": sym, "type": "direct_yH", "h": HORIZON, "r2": r2, "lo": lo,
+                 "hi": hi})
+    print(f"  [{sym}] A2 : R²(yH) {r2:+.5f} [{lo:+.5f}, {hi:+.5f}] ; rollout h={HORIZON} "
+          f"{ref[HORIZON]:+.5f}", flush=True)
+    return npz, rows
+
+
+def verdicts_a2(df_net: pd.DataFrame, df_cmp: pd.DataFrame, df_r2: pd.DataFrame) -> dict:
+    """Les deux regles A2 du prereg. A2 est EXPLORATOIRE : ces verdicts ne touchent jamais
+    au verdict principal de 2b-2."""
+    syms = sorted(df_r2.symbol.unique())
+    sig = {s: bool(df_r2[(df_r2.symbol == s) & (df_r2.type == "direct_yH")].lo.iloc[0] > 0)
+           for s in syms}
+    d = df_cmp[(df_cmp.gain.astype(str).str.startswith("agent_direct@2"))
+               & (df_cmp.ref.astype(str).str.startswith("agent_causal_A2@2"))
+               & (df_cmp.nature == "reel")]
+    bat = {s: bool(d[d.symbol == s].lo.iloc[0] > 0) for s in syms if (d.symbol == s).any()}
+    out = {
+        "echantillon": "A2 (cible cumulee, embargo 26) : NON comparable aux chiffres de 2b-2",
+        "signal_horizon": {"regle": "borne basse IC95 de R²_OOS(yH) > 0", "seuil": ">= 4/5",
+                           "n": f"{sum(sig.values())}/{len(sig)}", "detail": sig,
+                           "ok": sum(sig.values()) * 5 >= 4 * len(sig)},
+        "direct_bat_rollout": {"regle": "borne basse IC95 appariée de Δnet(agent_direct@2 - "
+                               "agent_causal_A2@2) > 0", "seuil": ">= 4/5",
+                               "n": f"{sum(bat.values())}/{len(bat)}", "detail": bat,
+                               "ok": sum(bat.values()) * 5 >= 4 * len(bat)},
+    }
+    return out
 
 
 def causal_planner(C: np.ndarray):
@@ -243,7 +425,11 @@ def verdicts_2b(net: pd.DataFrame, cmp_: pd.DataFrame, syms: list[str],
         "exploitation_du_modele": {"symboles": expl, "n": len(expl)},
     }
     if conf is not None and len(conf):
-        cf = conf.set_index("symbol")
+        # `p2b_diag_confondants.csv` porte DEUX lignes par symbole : celle du plan (derive,
+        # timing, achat-conservation) et celle des permutations (`obs_bp`, `bruit_*`,
+        # `k_perm`), aux colonnes disjointes et donc trouees de NaN. `groupby.first()` prend
+        # la premiere valeur non nulle de chaque colonne, ce qui recolle les deux.
+        cf = conf.groupby("symbol").first()
         dedans = [s for s in syms if s in cf.index]
         bruit = [s for s in dedans if cf.loc[s, "obs_bp"] > cf.loc[s, "bruit_max"]]
         derive = [s for s in dedans
@@ -305,37 +491,226 @@ def write_results(out: str, v: dict, net: pd.DataFrame, cmp_: pd.DataFrame,
         f.write("\n")
 
 
+def write_a2_results(out: str, v: dict, net: pd.DataFrame, cmp_: pd.DataFrame,
+                     r2: pd.DataFrame) -> None:
+    res = {
+        "meta": {"nom": "phase2b_crypto_causal_A2",
+                 "prereg": "configs/phase2b_crypto_prereg.yaml (bloc regles_A2)",
+                 "harnais": "scripts/crypto/phase2b.py --a2",
+                 "frais_primaire": FEE_PRIMAIRE, "horizon": HORIZON,
+                 "embargo": EMBARGO_A2, "n_boot": N_BOOT, "seed": SEED,
+                 "symboles": sorted(r2.symbol.unique()),
+                 "echantillon": "OOS prive des H-1 dernieres barres par jour : "
+                                "NON comparable aux chiffres de 2b-2",
+                 "genere_le": "2026-10-08"},
+        "verdicts": v,
+        "net": json.loads(net.to_json(orient="records")),
+        "compare": json.loads(cmp_.to_json(orient="records")),
+        "r2": json.loads(r2.to_json(orient="records")),
+    }
+    p = os.path.join(out, "phase2b_a2_results.json")
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(res, f, indent=1, ensure_ascii=False)
+        f.write("\n")
+
+
+# --------------------------------------------------------------------------------------
+# Etape 2b-5 : extension a l'union des 88 journees, et masques par sous-ensemble.
+#
+# L'union est la liste TRIEE des 44 journees publiees et des 44 journees neuves. Les dates
+# neuves sont les points milieux des publiees (prereg, `extension_88_jours`), donc le tri
+# chronologique alterne exactement publiee / neuve : les deux sous-ensembles font 44 jours
+# chacun, et c'est la seule propriete dont depend la lecture par masque.
+# --------------------------------------------------------------------------------------
+
+def dates_neuves_du_prereg(p: str) -> list[str]:
+    """Les 44 dates neuves, lues dans le prereg : jamais en dur ici."""
+    with open(p, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    try:
+        neuves = [str(d) for d in cfg["extension_88_jours"]["dates_neuves"]]
+    except (KeyError, TypeError) as e:
+        raise SystemExit(f"{p} : illisible dans extension_88_jours.dates_neuves "
+                         f"({e}).") from None
+    if len(neuves) != 44:
+        raise SystemExit(f"{p} : {len(neuves)} dates neuves, 44 attendues.")
+    if set(neuves) & set(DATES_PUBLIEES_1C):
+        raise SystemExit("Une date neuve figure aussi parmi les publiees : l'extension n'est "
+                         "plus disjointe, les masques n'auraient plus de sens.")
+    return neuves
+
+
+def dates_du_dateset(nom: str, prereg: str) -> tuple[list[str], list[str]]:
+    """(dates ordonnees, neuves) du jeu demande. `phase1` = les 44 publiees."""
+    if nom == "phase1":
+        return list(DATES_PUBLIEES_1C), []
+    if nom == "union":
+        neuves = dates_neuves_du_prereg(prereg)
+        return sorted(set(DATES_PUBLIEES_1C) | set(neuves)), neuves
+    raise SystemExit(f"--dateset inconnu : {nom} (phase1 | union).")
+
+
+def applique_masque(npz: dict, day_dates: list[str], neuves: list[str], masque: str) -> None:
+    """Restreint `count` aux journees du sous-ensemble. Mute `npz`.
+
+    Toutes les statistiques du harnais (`arm_stats`, `compare`, `ecart_exploitation`) se
+    ponderent par `count` : mettre a zero les journees hors masque les restreint donc au
+    sous-ensemble SANS toucher aux tableaux par barre, qui sont identiques d'un masque a
+    l'autre. Un masque vide est un ECHEC BLOQUANT : il rendrait des statistiques sur zero
+    journee, et un zero presente comme un resultat est exactement ce que le prereg interdit.
+    """
+    if masque == "union":
+        keep = np.ones(len(day_dates), dtype=bool)
+    elif masque in ("neuf", "ancien"):
+        dedans = np.isin(day_dates, list(neuves))
+        keep = dedans if masque == "neuf" else ~dedans
+    else:
+        raise SystemExit(f"--masque inconnu : {masque} (neuf | union | ancien).")
+    c = np.asarray(npz["count"], float)
+    if len(keep) != len(c):
+        raise SystemExit(f"masque {masque} : {len(keep)} journees pour {len(c)} compteurs. "
+                         f"Les identifiants de journee ne sont pas ceux du cache.")
+    if not keep.any():
+        raise SystemExit(f"masque {masque} vide : aucune journee de ce sous-ensemble.")
+    out = c.copy()
+    out[~keep] = 0.0
+    if not (out > 0).any():
+        raise SystemExit(f"masque {masque} vide : aucune journee TESTEE dans ce "
+                         f"sous-ensemble (les plis n'y passent pas).")
+    npz["count"] = out
+
+
+def chiffre_bras(npz: dict, sym: str, out: str, suffix: str = "") -> None:
+    """Toutes les statistiques d'un symbole, ecrites dans `p2b_*{suffix}.csv`.
+
+    Un fichier PAR SYMBOLE fait foi : un run interrompu ne perd rien, et le relancer reprend
+    ou il s'est arrete. Les CSV sont FUSIONNES par symbole comme partout ailleurs dans le
+    projet : un run partiel n'ampute pas les symboles deja faits.
+    """
+    n_s, c_s, e_s = [], [], []
+    for fee in FEES_BP:
+        for name in BRAS_FIXES + (tag("agent_fuite", fee), tag("agent_causal", fee),
+                                  tag("clairv", fee)):
+            n_s.append(arm_stats(npz, sym, name, fee, imaginee=False))
+        for name in ("myope", tag("agent_fuite", fee), tag("agent_causal", fee)):
+            n_s.append(arm_stats(npz, sym, name, fee, imaginee=True))
+        e_s.append(ecart_exploitation(npz, sym, tag("agent_causal", fee), fee))
+        e_s.append(ecart_exploitation(npz, sym, tag("agent_fuite", fee), fee))
+    for h in HORIZONS_ROBUSTESSE:
+        name = tag(f"agent_causal_H{h}", FEE_PRIMAIRE)
+        n_s.append(arm_stats(npz, sym, name, FEE_PRIMAIRE, imaginee=False))
+        n_s.append(arm_stats(npz, sym, name, FEE_PRIMAIRE, imaginee=True))
+    n_s.append(arm_stats(npz, sym, tag("agent_plat", FEE_PRIMAIRE), FEE_PRIMAIRE,
+                         imaginee=False))
+    n_s.append(arm_stats(npz, sym, tag("agent_plat", FEE_PRIMAIRE), FEE_PRIMAIRE,
+                         imaginee=True))
+
+    ag, fu, my = tag("agent_causal", FEE_PRIMAIRE), tag("agent_fuite", FEE_PRIMAIRE), "myope"
+    cl = tag("clairv", FEE_PRIMAIRE)
+    # LA mesure de la fuite : les deux bras ne different QUE par l'information dont le
+    # planificateur dispose a t, et sont apparies par journee.
+    c_s.append(compare(npz, sym, fu, ag, FEE_PRIMAIRE, imaginee=False))
+    c_s.append(compare(npz, sym, ag, my, FEE_PRIMAIRE, imaginee=False))
+    c_s.append(compare(npz, sym, fu, my, FEE_PRIMAIRE, imaginee=False))
+    c_s.append(compare(npz, sym, ag, cl, FEE_PRIMAIRE, imaginee=False))
+    c_s.append(compare(npz, sym, ag, my, 0.0, imaginee=False))
+    c_s.append(compare(npz, sym, ag, tag("agent_causal_H1", FEE_PRIMAIRE), FEE_PRIMAIRE,
+                       imaginee=False))
+
+    _merge_csv(os.path.join(out, f"p2b_net{suffix}.csv"), pd.DataFrame(n_s))
+    _merge_csv(os.path.join(out, f"p2b_compare{suffix}.csv"), pd.DataFrame(c_s))
+    _merge_csv(os.path.join(out, f"p2b_exploit{suffix}.csv"), pd.DataFrame(e_s))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default=OUT)
+    ap.add_argument("--out", default=None,
+                    help="defaut : experiments_2b (phase1) | experiments_2b_88 (union). "
+                         "Les deux jeux ne partagent JAMAIS un dossier : leurs chiffres ne "
+                         "sont pas comparables.")
     ap.add_argument("--symbols", nargs="*", default=None)
     ap.add_argument("--model", default="linear", choices=("linear", "mlp"))
     ap.add_argument("--dates", nargs="*", default=None,
-                    help="journees a utiliser ; defaut = les 44 publiees")
+                    help="journees explicites ; prioritaire sur --dateset")
+    ap.add_argument("--prereg", default="configs/phase2b_crypto_prereg.yaml",
+                    help="source des 44 dates neuves (--dateset union)")
+    ap.add_argument("--dateset", default="phase1", choices=("phase1", "union"))
+    ap.add_argument("--masques", nargs="*", default=None,
+                    help="sous-ensembles a chiffrer SEULEMENT pour --dateset union "
+                         "(neuf | union | ancien). Le premier est le primaire.")
     ap.add_argument("--check", action="store_true",
                     help="controles d'integrite seuls, puis sortie sans rien ecrire.")
     ap.add_argument("--diag", action="store_true", help="ajoute les diagnostics des 2b regles.")
+    ap.add_argument("--a2", action="store_true",
+                    help="etape 2b-3 : cible cumulee, echantillon A2 (EXPLORATOIRE). Ecrit "
+                         "a2_*.csv et phase2b_a2_results.json, jamais p2b_*.csv.")
+    ap.add_argument("--rapport-seul", dest="rapport_seul", action="store_true",
+                    help="reapplique les verdicts aux CSV deja ecrits, sans rien recalculer. "
+                         "Les verdicts sont une fonction pure des CSV : un plantage dans la "
+                         "queue du run ne doit pas couter les 10 a 35 minutes de calcul.")
     ap.add_argument("--perm", type=int, default=K_PERM)
     ap.add_argument("--shift", type=int, default=K_SHIFT)
     args = ap.parse_args()
+    if args.a2 and args.check:
+        raise SystemExit("--a2 et --check ensemble n'ont pas de sens : les controles "
+                         "d'integrite portent sur l'echantillon de la Phase 2.")
+    if args.masques and args.dateset != "union":
+        raise SystemExit("--masques ne sert qu'a --dateset union : sur les 44 journees "
+                         "publiees il n'y a pas de journee neuve.")
+    masques: list[str | None] = ["union"] if args.dateset == "union" else [None]
+    if args.masques:
+        masques = list(args.masques)
+    args.out = args.out or ("experiments_2b" if args.dateset == "phase1"
+                            else "experiments_2b_88")
 
-    cache = load_cached(args.dates)
-    if not cache:
-        raise SystemExit("Aucun .pkl dans data/raw/crypto_lob.")
-    if args.symbols:
-        inconnus = [s for s in args.symbols if s not in cache]
-        if inconnus:
-            raise SystemExit(f"Aucun .pkl pour : {', '.join(inconnus)}.")
-        cache = {s: cache[s] for s in args.symbols}
-    if not args.check:
-        os.makedirs(args.out, exist_ok=True)
+    if args.rapport_seul and (args.a2 or args.check):
+        raise SystemExit("--rapport-seul ne se combine ni avec --a2 ni avec --check : ceux-ci "
+                         "calculent des chiffres, lui n'en relit que.")
+    cache: dict = {}
+    if not args.rapport_seul:
+        dates, neuves = dates_du_dateset(args.dateset, args.prereg)
+        cache = load_cached(args.dates or dates)
+        if not cache:
+            raise SystemExit("Aucun .pkl dans data/raw/crypto_lob.")
+        if args.symbols:
+            inconnus = [s for s in args.symbols if s not in cache]
+            if inconnus:
+                raise SystemExit(f"Aucun .pkl pour : {', '.join(inconnus)}.")
+            cache = {s: cache[s] for s in args.symbols}
+        if not args.check:
+            os.makedirs(args.out, exist_ok=True)
 
-    net_rows, cmp_rows, exp_rows, conf_rows = [], [], [], []
+    a2_net, a2_cmp, a2_r2 = [], [], []
     for sym, pkls in cache.items():
         t0 = time.time()
         print(f"  [{sym}] etat large ({len(pkls)} jours)...", flush=True)
         S_days = build_wide(pkls)
         days, spread = _days_and_spread(S_days)
+        # Les identifiants de journee suivent l'ordre du cache, date par date : c'est ce qui
+        # permet de rattacher chaque journee a son sous-ensemble.
+        day_dates = [date_of(pf) for pf in pkls]
+
+        if args.a2:
+            print(f"  [{sym}] A2 : cible cumulee H={HORIZON}, embargo {EMBARGO_A2}, "
+                  f"echantillon distinct de 2b-2...", flush=True)
+            npz2, rows = eval_symbol_a2(sym, S_days, model_name=args.model)
+            del S_days
+            np.savez_compressed(os.path.join(args.out, f"a2_oos_{sym}.npz"), **npz2)
+            for fee in FEES_BP:
+                for name in ("myope", tag("agent_causal_A2", fee),
+                             tag("agent_direct", fee)):
+                    a2_net.append(arm_stats(npz2, sym, name, fee, imaginee=False))
+                    a2_net.append(arm_stats(npz2, sym, name, fee, imaginee=True))
+                for nat in (False, True):
+                    a2_cmp.append(compare(npz2, sym, tag("agent_direct", fee),
+                                          tag("agent_causal_A2", fee), fee, nat))
+            a2_r2 += rows
+            _merge_csv(os.path.join(args.out, "a2_net.csv"), pd.DataFrame(a2_net))
+            _merge_csv(os.path.join(args.out, "a2_compare.csv"), pd.DataFrame(a2_cmp))
+            _merge_csv(os.path.join(args.out, "a2_r2.csv"), pd.DataFrame(a2_r2))
+            print(f"  [{sym}] A2 fait en {time.time() - t0:.0f}s ; CSV fusionnes.", flush=True)
+            continue
+
         print(f"  [{sym}] {len(days)} echantillons, {days.max() + 1} jours ; monde + "
               f"rollout (H={H_MAX}) + planification...", flush=True)
         npz, ext = eval_symbol_2b(sym, S_days, days, spread, model_name=args.model)
@@ -347,47 +722,16 @@ def main() -> None:
             check_rollout(ext)
             continue
 
-        # Un fichier PAR SYMBOLE fait foi : un run interrompu ne perd rien, et le relancer
-        # reprend ou il s'est arrete. Les CSV sont FUSIONNES par symbole comme partout
-        # ailleurs dans le projet : un run partiel n'ampute pas les symboles deja faits.
         np.savez_compressed(os.path.join(args.out, f"p2b_oos_{sym}.npz"), **npz)
 
-        n_s, c_s, e_s = [], [], []
-        for fee in FEES_BP:
-            for name in BRAS_FIXES + (tag("agent_fuite", fee), tag("agent_causal", fee),
-                                      tag("clairv", fee)):
-                n_s.append(arm_stats(npz, sym, name, fee, imaginee=False))
-            for name in ("myope", tag("agent_fuite", fee), tag("agent_causal", fee)):
-                n_s.append(arm_stats(npz, sym, name, fee, imaginee=True))
-            e_s.append(ecart_exploitation(npz, sym, tag("agent_causal", fee), fee))
-            e_s.append(ecart_exploitation(npz, sym, tag("agent_fuite", fee), fee))
-        for h in HORIZONS_ROBUSTESSE:
-            name = tag(f"agent_causal_H{h}", FEE_PRIMAIRE)
-            n_s.append(arm_stats(npz, sym, name, FEE_PRIMAIRE, imaginee=False))
-            n_s.append(arm_stats(npz, sym, name, FEE_PRIMAIRE, imaginee=True))
-        n_s.append(arm_stats(npz, sym, tag("agent_plat", FEE_PRIMAIRE), FEE_PRIMAIRE,
-                             imaginee=False))
-        n_s.append(arm_stats(npz, sym, tag("agent_plat", FEE_PRIMAIRE), FEE_PRIMAIRE,
-                             imaginee=True))
-
-        ag, fu, my = tag("agent_causal", FEE_PRIMAIRE), tag("agent_fuite", FEE_PRIMAIRE), "myope"
-        cl = tag("clairv", FEE_PRIMAIRE)
-        # LA mesure de la fuite : les deux bras ne different QUE par l'information dont le
-        # planificateur dispose a t, et sont apparies par journee.
-        c_s.append(compare(npz, sym, fu, ag, FEE_PRIMAIRE, imaginee=False))
-        c_s.append(compare(npz, sym, ag, my, FEE_PRIMAIRE, imaginee=False))
-        c_s.append(compare(npz, sym, fu, my, FEE_PRIMAIRE, imaginee=False))
-        c_s.append(compare(npz, sym, ag, cl, FEE_PRIMAIRE, imaginee=False))
-        c_s.append(compare(npz, sym, ag, my, 0.0, imaginee=False))
-        c_s.append(compare(npz, sym, ag, tag("agent_causal_H1", FEE_PRIMAIRE), FEE_PRIMAIRE,
-                           imaginee=False))
-
-        _merge_csv(os.path.join(args.out, "p2b_net.csv"), pd.DataFrame(n_s))
-        _merge_csv(os.path.join(args.out, "p2b_compare.csv"), pd.DataFrame(c_s))
-        _merge_csv(os.path.join(args.out, "p2b_exploit.csv"), pd.DataFrame(e_s))
-        net_rows += n_s
-        cmp_rows += c_s
-        exp_rows += e_s
+        # `union` chiffre le corpus entier, les autres le restreignent : les CSV sont
+        # suffixes par masque, et JAMAIS fusionnes entre eux.
+        c_plein = np.asarray(npz["count"], float).copy()
+        for m in masques:
+            if m not in (None, "union"):
+                applique_masque(npz, day_dates, neuves, m)
+            chiffre_bras(npz, sym, args.out, "" if m == "union" else f"_{m}" if m else "")
+            npz["count"] = c_plein.copy()
 
         if args.diag:
             planner = causal_planner(ext["C"])
@@ -399,12 +743,25 @@ def main() -> None:
                 df = pd.DataFrame(rr)
                 df.to_csv(os.path.join(args.out, f"p2b_diag_{nm}_{sym}.csv"), index=False)
                 _merge_csv(os.path.join(args.out, f"p2b_diag_{nm}.csv"), df)
-            conf_rows += conf
 
         print(f"  [{sym}] fait en {time.time() - t0:.0f}s ; CSV fusionnes.", flush=True)
 
     if args.check:
         print("\nControles passes.")
+        return
+
+    if args.a2:
+        d_net = pd.read_csv(os.path.join(args.out, "a2_net.csv"))
+        d_cmp = pd.read_csv(os.path.join(args.out, "a2_compare.csv"))
+        d_r2 = pd.read_csv(os.path.join(args.out, "a2_r2.csv"))
+        v = verdicts_a2(d_net, d_cmp, d_r2)
+        write_a2_results(args.out, v, d_net, d_cmp, d_r2)
+        print("\nA2 (exploratoire) :")
+        for k in ("signal_horizon", "direct_bat_rollout"):
+            print(f"  {k:20s} {v[k]['n']:>5s} (seuil {v[k]['seuil']}) -> "
+                  f"{'OK' if v[k]['ok'] else 'non'}")
+        print(f"\nSorties : {args.out}/a2_net.csv, a2_compare.csv, a2_r2.csv, "
+              f"phase2b_a2_results.json")
         return
 
     # Les verdicts sont relus DEPUIS LES CSV : un run reparti par sous-ensemble de symboles
