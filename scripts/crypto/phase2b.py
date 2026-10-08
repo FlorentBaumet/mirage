@@ -266,7 +266,10 @@ def eval_symbol_a2(sym: str, S_days, model_name: str = "linear"):
         sel = np.searchsorted(keep, te)
         pred1[sel] = m1.predict(X2[te])[:, RET_IDX]
         y1[sel] = Y2[te][:, RET_IDX]
-        yHp[sel] = mc.predict(X2[te])[:, 0]
+        # `mc` est ajuste sur une cible a UNE colonne, et sklearn >= 1.9 APLATIT la prediction
+        # d'un modele mono-sortie ((m,) et non (m, 1)). On ravel au lieu d'indexer [:, 0] :
+        # ca marche pour les deux formes, et ca ne depend pas de la version de sklearn.
+        yHp[sel] = np.ravel(mc.predict(X2[te]))
         base, te0 = int(sel[0]), int(te[0])
         for a in range(0, len(te), CHUNK):
             e = min(a + CHUNK, len(te))
@@ -275,7 +278,12 @@ def eval_symbol_a2(sym: str, S_days, model_name: str = "linear"):
     del X2, Y2, yH
 
     dk, hk = dd2[keep], half2[keep]
-    yHk, yHk_p, actk = act[keep, -1], yHp[keep], act[keep]
+    # `yHp` est DEJA compacte : il est rempli aux positions `sel` dans une taille `n2`, comme
+    # `pred1` et `y1`. Le re-indexer par `keep` le decalait une seconde fois et sortait des
+    # bornes (le premier `keep` vaut ~0,4*len(X) alors que `n2` en vaut ~0,6). Les tableaux
+    # restes a la taille de `len(X2)` sont ceux d'AVANT compaction : `act`, `dd2`, `half2`.
+    actk = act[keep]
+    yHk, yHk_p = actk[:, -1], yHp
     npz: dict = {"y": y1, "pred": pred1, "half": hk, "day": dk, "n_oos": n2,
                  "count": np.bincount(dk, minlength=n_days).astype(float), "symbole": sym}
     _reduce(npz, "myope", np.sign(pred1) * pred1, np.sign(pred1) * y1,

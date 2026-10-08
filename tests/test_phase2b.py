@@ -151,3 +151,41 @@ def test_verdicts_a2_compte_les_bonnes_lignes():
     assert v["signal_horizon"]["n"] == "4/5" and v["signal_horizon"]["ok"]
     assert v["direct_bat_rollout"]["n"] == "4/5" and v["direct_bat_rollout"]["ok"]
     assert v["direct_bat_rollout"]["detail"]["E"] is False
+
+
+def test_a2_tourne_de_bout_en_bout_sur_des_journees_synthetiques():
+    """`eval_symbol_a2` doit aller au bout, et ses deux chemins doivent tomber d'accord.
+
+    Ce test existe parce que le chemin A2 a ete ecrit et commite SANS avoir jamais ete
+    execute. Au premier run reel il est mort sur `mc.predict(X2[te])[:, 0]` : sklearn >= 1.9
+    aplatit la prediction d'un modele mono-sortie, donc l'indexation en colonne levait
+    IndexError. Un aller-retour sur des journees synthetiques assez longues pour produire
+    NFOLDS plis l'aurait vu tout de suite. Il verifie aussi le controle bloquant du harnais
+    (le R² du rollout recalcule a partir de `_r2_ci` doit egaler celui de `rollout_r2`), qui
+    n'aurait sinon ete exerce qu'en pleine nuit sur les vraies donnees.
+    """
+    rng = np.random.default_rng(0)
+    from mirage.state import RET_IDX, STATE_COLS
+
+    d = len(STATE_COLS)
+    spread_idx = STATE_COLS.index("spread_rel")
+    days = []
+    for _ in range(6):
+        s = rng.normal(0.0, 1.0, (400, d))
+        s[:, RET_IDX] = rng.normal(0.0, 1e-4, 400)   # rendements en relatif
+        s[:, spread_idx] = 2e-4                      # demi-spread ~ 1 bp
+        days.append(s)
+
+    npz, rows = phase2b.eval_symbol_a2("SYNTH", days)
+
+    assert npz["n_oos"] > 0
+    assert npz["symbole"] == "SYNTH"
+    # Les agregats par jour de chaque bras focal du prereg A2, et du myope.
+    for bras in ("myope", "agent_causal_A2@2", "agent_direct@2"):
+        for prefix in ("gi_", "gr_", "dp_", "dph_"):
+            assert prefix + bras in npz, f"{prefix}{bras} manquant"
+    # Les trois lignes de R² (rollout a 1, 5 et H pas, plus la cible cumulee).
+    types = [r["type"] for r in rows]
+    assert types.count("rollout_1pas") == 3 and types.count("direct_yH") == 1
+    for r in rows:
+        assert np.isfinite(r["r2"]) and r["lo"] <= r["r2"] <= r["hi"]
