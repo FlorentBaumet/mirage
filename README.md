@@ -1,9 +1,9 @@
 # MIRAGE - world model de marché et évaluation honnête
 
 Un **world model de marché** (carnet d'ordres et prix) évalué par une procédure
-**anti-lookahead et pré-enregistrée**, entièrement out-of-sample. Pas d'agent, pas de
-trade réel : la question posée est de savoir si l'on peut *mesurer* un edge - et le
-projet existe pour montrer comment on le **réfute**.
+**anti-lookahead et pré-enregistrée**, entièrement out-of-sample. Pas de trade réel : la
+question posée est de savoir si l'on peut *mesurer* un edge - et le projet existe pour
+montrer comment on le **réfute**.
 
 Le résultat porteur : sur le carnet crypto réel, le world model trouve un signal de prix
 **authentique et statistiquement significatif** (R²_OOS 0.052 / 0.050 / 0.037 / 0.021 / 0.016
@@ -12,7 +12,9 @@ symboles sur 5**). Une stratégie naïve dessus perd de l'argent **dès 2 bp de 
 cinq, et sur XRP elle est déjà morte **à zéro frais**. Le signal est réel ; l'edge est un
 mirage. Ce constat ne tient pas à une faiblesse du modèle : deux re-tests pré-enregistrés -
 un modèle non linéaire, et une information de carnet plus profonde - ne le renversent pas
-(phases 1d et 1e, ci-dessous).
+(phases 1d et 1e, ci-dessous). Un agent qui planifie dans le modèle a d'abord semblé
+battre ce constat ; c'était une fuite de données, détectée, retirée et re-mesurée (phases 2
+et 2b).
 
 ![Un edge réel qui est un mirage net de frais](reports/figures/crypto_lob_mirage.png)
 
@@ -50,38 +52,19 @@ structurel. Détail, limites et chiffres complets :
 | [**1c (OFI)**](reports/PHASE1C_OFI.md) | idem 1, + OFI événementiel au meilleur niveau | Ajouter une information absente des barres 1 s (le flux intra-seconde) change-t-il la prévision - et le verdict ? | **Non, et c'est publié tel quel** : ΔR²_OOS(ret) apparié entre **−0.0006 et +0.0000**, apport non établi sur **0/5** symbole (seuil pré-enregistré ≥ 4/5), net à 2 bp inchangé (≤ 0.01 bp). Un résultat négatif bien démontré vaut un résultat. |
 | [**1d (OFI, non linéaire)**](reports/PHASE1D_NL.md) | idem 1c, modèle MLP au lieu du linéaire, état identique | L'absence d'apport de l'OFI est-elle un artefact du modèle linéaire ? | **Non** : à état identique, un MLP ne tire rien de l'OFI (apport **0/5**) et le **dégrade significativement** sur SOL et XRP. La lecture « déjà contenue dans l'état » tient pour deux classes de modèles. |
 | [**1e (profondeur)**](reports/PHASE1E_PROFONDEUR.md) | idem 1, + déséquilibre des niveaux 2–10 et asymétrie de pente du carnet | L'information au-delà du meilleur niveau apporte-t-elle quelque chose ? | **Apport partiel, non promu** : ΔR² significativement positif sur BTC et ETH, **négatif** sur XRP et DOGE (**2/5**), et le signe s'inverse sous MLP. La réserve pré-enregistrée est à moitié réfutée par les données - publié tel quel. |
-| [**2 (agent)**](reports/PHASE2_AGENT.md) | idem 1, **même modèle**, planificateur DP exact conscient du coût | Un agent qui planifie dans le world model trouve-t-il un edge, ou exploite-t-il ses erreurs ? | **Le premier net réel positif du projet - et il ne dit pas ce qu'il a l'air de dire.** `edge_reel` 5/5 (+0.02 à +0.09 bp/barre à 2 bp, IC95 > 0 partout), bruit 5/5 perdant (p ≤ 0.025), dérive nulle à la 4ᵉ décimale, turnover ÷ 20 à ÷ 120. Mais le brut directionnel de l'agent est **inférieur** à celui du bras publié sur **5/5** : la marge vient du spread qu'il refuse de payer, pas d'une meilleure prévision. Un résultat d'exécution, pas de signal. **VERDICT SUSPENDU le 2026-10-08** : le planificateur lisait à t des prédictions faites après t. Re-mesure causale pré-enregistrée, **faite le jour même** : `edge_reel_causal` **NON (0/5)**, `fuite_significative` **OUI (5/5)** - le résultat positif était un artefact de la fuite. |
+| [**2 (agent)**](reports/PHASE2_AGENT.md) | idem 1, **même modèle**, planificateur DP exact conscient du coût | Un agent qui planifie dans le world model trouve-t-il un edge, ou exploite-t-il ses erreurs ? | **Résultat positif rétracté.** Le net réel de l'agent paraissait positif sur 5/5 (+0.02 à +0.09 bp/barre à 2 bp), avec trois contrôles réussis (bruit, dérive, décalages circulaires). Mais le planificateur lisait à la barre t des prédictions faites après t : le résultat venait de cette fuite. Erratum en tête du rapport. |
+| [**2b (agent causal)**](reports/PHASE2B_CAUSAL.md) | idem 2, planificateur **causal** (rollout depuis la fenêtre de t seule), protocole pré-enregistré avant tout calcul | Le résultat de la Phase 2 survit-il sans la fuite ? | **Non** : `edge_reel_causal` **NON (0/5)**, net réel de −0.0056 à +0.0003 bp/barre à 2 bp, jamais significativement positif ; `fuite_significative` **OUI (5/5)** (écart apparié au bras publié de +0.021 à +0.096 bp). L'agent honnête bat toujours le myope, mais uniquement en coût évité : il s'abstient (turnover de 1e-4 à 3e-3 contre 0.56 à 0.77), il ne lit pas mieux le marché. |
 
-> **Le verdict de la Phase 2 est suspendu depuis le 2026-10-08, et la re-mesure qui a suivi
-> le réfute.** Le planificateur de la Phase 2 décidait à la barre t en lisant `rhat[t+1..t+H-1]`, des prédictions faites **plus
-> tard** que t ; et comme `make_supervised` aligne Y[k] = état k+L, `rhat[t+1]` est calculée
-> sur une fenêtre qui **contient le rendement que la position de t encaisse**. Un
-> planificateur honnête à t n'a que les prévisions **faites à t**. Les deux conclusions
-> positives du rapport (`edge_reel`, `agent_bat_le_myope`, 5/5 chacune) ne doivent plus être
-> citées sans cette réserve, le temps d'une re-mesure causale **pré-enregistrée avant tout
-> calcul** dans [`configs/phase2b_crypto_prereg.yaml`](configs/phase2b_crypto_prereg.yaml).
-> **Cette re-mesure a été faite le jour même, et elle est négative** : avec un planificateur
-> par rollout, `edge_reel_causal` est **NON sur 0/5** symbole (net réel de -0.0056 à +0.0003
-> bp/barre à 2 bp, jamais significativement positif) et la fuite est significative sur
-> **5/5** (écart apparié au bras publié de +0.021 à +0.096 bp). À 2 bp l'agent causal
-> s'abstient presque complètement (turnover 1e-4 à 3e-3 contre 0.57 à 0.77 pour le myope) :
-> le monde appris ne lui dit pas où va le prix, seulement quand il n'y a rien à gagner.
-> Ne sont pas touchés : le bras myope, le clairvoyant, les Phases 0 à 1e, et l'agent H = 1 de
-> la Phase 2, où la valeur des pas suivants est nulle et où il n'y a donc rien à lire dans le
-> futur. Le détail est dans l'erratum en tête de [`reports/PHASE2_AGENT.md`](reports/PHASE2_AGENT.md)
-> et dans [`reports/PHASE2B_CAUSAL.md`](reports/PHASE2B_CAUSAL.md).
->
-> **Le résultat positif de la Phase 2 est le plus piégeux du projet, et il se lit en deux
-> temps.** Un agent qui planifie 10 barres dans le world model et paie le spread **dans son
-> plan** dégage un net réel positif sur 5/5 symboles, et trois diagnostics écartent les
-> explications faciles : un agent nourri de bruit, avec les mêmes coûts, perd sur 5/5
-> (p ≤ 0.025) ; la contribution de la dérive directionnelle est nulle à la quatrième
-> décimale, et 400 décalages circulaires ne reproduisent jamais le brut observé ; le
-> turnover s'effondre de 48 000–65 000 à 410–2 629 changements par jour. Mais l'agent
-> **ne prédit pas mieux** : son brut directionnel est *inférieur* à celui du bras publié sur
-> 5/5, et toute sa marge vient du spread qu'il refuse de payer quand le gain espéré ne le
-> couvre pas. Ce que le monde appris a appris, une fois qu'on planifie dedans, c'est **quand
-> ne pas trader** - pas où va le prix. À H = 1, il ne reste d'ailleurs rien.
+> **Erratum du 2026-10-08.** Un résultat positif de la Phase 2 a été publié, puis retiré le jour
+> même. Le planificateur décidait à la barre t en lisant `rhat[t+1..t+H-1]`, des prédictions
+> faites plus tard que t ; et comme `make_supervised` aligne Y[k] = état k+L, `rhat[t+1]` est
+> calculée sur une fenêtre qui contient le rendement que la position de t encaisse. La
+> re-mesure causale, fixée dans [`configs/phase2b_crypto_prereg.yaml`](configs/phase2b_crypto_prereg.yaml)
+> avant tout calcul, ne le retrouve pas (Phase 2b ci-dessus). Ne sont pas touchés : les Phases
+> 0 à 1e, le bras myope, le bras clairvoyant, et l'agent H = 1 de la Phase 2 (où la valeur des
+> pas suivants est nulle, donc rien à lire dans le futur). Détail dans l'erratum de
+> [`reports/PHASE2_AGENT.md`](reports/PHASE2_AGENT.md) et dans
+> [`reports/PHASE2B_CAUSAL.md`](reports/PHASE2B_CAUSAL.md).
 
 ## Méthodologie - ce qui rend l'évaluation crédible
 
@@ -173,6 +156,12 @@ signal) :
 # experiments\crypto_lob_oos_<SYM>.npz a l'identique.
 .\.venv\Scripts\python.exe scripts\crypto\arm_eval.py --out experiments_arms
 .\.venv\Scripts\python.exe scripts\crypto\paired_arms.py        # delta R2 et delta net APPARIES, IC95, verdicts
+
+# Phases 2 (agent, verdict rétracté) et 2b (re-mesure causale, pré-enregistrée). Chaque script
+# accepte --check (contrôle d'intégrité sur un symbole) avant le passage complet.
+.\.venv\Scripts\python.exe scripts\crypto\agent_plan.py --check --symbols DOGEUSDT
+.\.venv\Scripts\python.exe scripts\crypto\phase2b.py --symbols DOGEUSDT --check
+.\.venv\Scripts\python.exe scripts\crypto\phase2b.py --out experiments_2b
 ```
 
 ## Structure
@@ -197,15 +186,18 @@ src/mirage/
   wm_eval.py            Phase 1a : 1-step par dimension + rollout
   impact.py             overlay d'impact mécaniste (Phase 1b)
   backtest.py           règles de frontière de journée (multi-jours), testées
+  plan.py               planificateur DP (Phase 2) et planificateur causal par rollout (2b)
 scripts/
   lobster/              bootstrap_signif, impact_curves, run_gru, tick_regime,
                         make_synthetic_lobster
   crypto/               download_binance, fetch_bybit_batch, crypto_lob, fetch_ofi,
                         bootstrap_signif, spread_regime, paired_ofi,
-                        arm_eval (multi-bras), paired_arms (apparié multi-bras)
-configs/                protocoles FIGÉS (phase0, phase0_crypto, phase1, phase1c, phase1d, phase1e)
-reports/                les 8 write-ups + figures
-tests/                  tests anti-fuite, frontières de journée, impact, appariement des bras
+                        arm_eval (multi-bras), paired_arms (apparié multi-bras),
+                        agent_plan, agent_diag (Phase 2), phase2b, calib_diag (Phase 2b)
+configs/                protocoles FIGÉS (phase0 à phase2b : un fichier par phase)
+reports/                les 10 write-ups + figures
+tests/                  tests anti-fuite, frontières de journée, impact, appariement des bras,
+                        causalité du planificateur (Phase 2b)
 ```
 
 ## Limites

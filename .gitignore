@@ -18,4 +18,7 @@ experiments_agent/
 experiments_2b/
 experiments_2b_88/
 wandb/
-logs_agent.txt
+
+# Journaux de runs locaux
+logs_*.txt
+logs_*.err
